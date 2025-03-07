@@ -1,6 +1,5 @@
 // game-logic.js (Part 1) - Complete implementation
 // This file handles game mechanics, moves, and rules
-// Last synchronized: Version check - March 7, 2025
 
 // Variables to prevent rapid actions
 let isRolling = false;
@@ -10,30 +9,6 @@ let lastMouseEvent = 0;
 const ROLL_COOLDOWN = 1000; // 1 second between rolls
 const SAVE_COOLDOWN = 2000; // 2 seconds between saves
 const MOUSE_COOLDOWN = 100; // 100ms between mouse events
-
-// Add a sync lock to prevent concurrent syncs
-let isSyncing = false;
-let syncAttempts = 0;
-const MAX_SYNC_ATTEMPTS = 3;
-
-// BREAKTHROUGH: Add a forced sync queue to ensure critical game state changes are always saved
-let forceSyncQueue = [];
-let lastSyncTime = 0;
-const SYNC_INTERVAL = 500; // 500ms between forced syncs
-
-// CRITICAL FIX: Add move locking to prevent reversion
-let lockedMoves = [];
-let lastBoardState = null;
-let moveReversionTimeout = null;
-
-// NETWORK FIX: Add local storage backup to preserve moves across network issues
-const LOCAL_STORAGE_KEY = 'backgammon_state_';
-let lastSavedStateTimestamp = 0;
-
-// Add turn acknowledgment system
-let turnAcknowledged = false;
-let lastTurnTimestamp = 0;
-const TURN_TIMEOUT = 30000; // 30 seconds max per turn
 
 // Mouse interaction functions with throttling
 function mousePressed() {
@@ -113,44 +88,254 @@ function mouseReleased() {
     // Throttle to prevent rapid clicks
     const currentTime = performance.now();
     if (currentTime - lastMouseEvent < MOUSE_COOLDOWN) {
-        return;
+        return; // Skip if too soon after last event
     }
     lastMouseEvent = currentTime;
     
     try {
         if (!canPlayerMove()) {
+            console.log("Cannot move - not your turn");
             selectedChecker = null;
             validMoves = [];
             combinedMoves = [];
             return;
         }
         
-        // Check if game state has changed
-        firebase.database().ref('games/' + window.backgammonGame.gameId).once('value')
-            .then((snapshot) => {
-                const serverData = snapshot.val();
-                if (serverData && serverData.version > gameStateVersion) {
-                    console.log("Game state has changed, reloading...");
-                    loadGameState();
-                    return;
+        if (!selectedChecker) {
+            console.log("No checker selected");
+            return;
+        }
+        
+        // Check for win condition
+        if ((whiteBearOff && whiteBearOff.length === 15) || 
+            (blackBearOff && blackBearOff.length === 15)) {
+            console.log("Game already won");
+            selectedChecker = null;
+            validMoves = [];
+            combinedMoves = [];
+            return;
+        }
+        
+        let moved = false;
+        let playerColor = currentPlayer === 'player1' ? 'white' : 'black';
+        
+        // Check valid moves (including combined moves)
+        let allPossibleMoves = [...validMoves];
+        let combinedMoveIndices = [];
+        
+        // Add combined move target indices
+        for (let i = 0; i < combinedMoves.length; i++) {
+            allPossibleMoves.push(combinedMoves[i].targetIndex);
+            combinedMoveIndices.push(allPossibleMoves.length - 1);
+        }
+        
+        console.log("Checking possible moves:", { validMoves: validMoves, combinedMoves: combinedMoves });
+        
+        for (let i = 0; i < allPossibleMoves.length; i++) {
+            const pointIndex = allPossibleMoves[i];
+            const isCombinedMove = combinedMoveIndices.includes(i);
+            
+            // Handle bearing off
+            if ((playerColor === 'white' && pointIndex === 24) || 
+                (playerColor === 'black' && pointIndex === -1)) {
+                
+                let checker;
+                
+                if (selectedChecker.pointIndex === -1) {
+                    checker = playerColor === 'white' ? whiteBar.pop() : blackBar.pop();
+                    console.log("Taking checker from bar for bearing off");
+                } else {
+                    checker = board[selectedChecker.pointIndex].splice(selectedChecker.checkerIndex, 1)[0];
+                    console.log("Taking checker from point for bearing off:", selectedChecker.pointIndex);
                 }
                 
-                // Continue with move if state hasn't changed
-                executeMove();
-            })
-            .catch((error) => {
-                console.error("Error checking game state:", error);
-            });
-        
-        // If a checker was selected and moved
-        if (selectedChecker !== null) {
-            // ... existing code ...
+                if (playerColor === 'white') {
+                    whiteBearOff.push(checker);
+                    console.log("White checker borne off, total:", whiteBearOff.length);
+                    
+                    if (whiteBearOff.length === 15) {
+                        gameStatus = player1Name + " wins the game!";
+                        dice = [];
+                        diceRolled = false;
+                        selectedChecker = null;
+                        validMoves = [];
+                        combinedMoves = [];
+                        moved = true;
+                        
+                        console.log("White wins the game!");
+                        // Save final game state
+                        saveGameStateThrottled();
+                        break;
+                    } else {
+                        gameStatus = 'White checker borne off!';
+                    }
+                } else {
+                    blackBearOff.push(checker);
+                    console.log("Black checker borne off, total:", blackBearOff.length);
+                    
+                    if (blackBearOff.length === 15) {
+                        gameStatus = player2Name + " wins the game!";
+                        dice = [];
+                        diceRolled = false;
+                        selectedChecker = null;
+                        validMoves = [];
+                        combinedMoves = [];
+                        moved = true;
+                        
+                        console.log("Black wins the game!");
+                        // Save final game state
+                        saveGameStateThrottled();
+                        break;
+                    } else {
+                        gameStatus = 'Black checker borne off!';
+                    }
+                }
+                
+                // Handle dice removal
+                if (isCombinedMove) {
+                    // Use both dice for combined move
+                    let combinedMove = combinedMoves[i - validMoves.length];
+                    // Remove the specific dice used
+                    let dieIndex1 = dice.indexOf(combinedMove.die1);
+                    if (dieIndex1 !== -1) dice.splice(dieIndex1, 1);
+                    
+                    let dieIndex2 = dice.indexOf(combinedMove.die2);
+                    if (dieIndex2 !== -1) dice.splice(dieIndex2, 1);
+                    
+                    console.log("Used combined dice:", combinedMove.die1, combinedMove.die2);
+                } else {
+                    // Remove one die
+                    if (dice.length > 0) {
+                        dice.splice(0, 1);
+                        console.log("Used one die for bearing off, remaining dice:", dice);
+                    }
+                }
+                
+                moved = true;
+                break;
+            }
+
+            // Normal move within the board
+            let pointX = getPointX(pointIndex);
+            let pointY = getPointY(pointIndex);
+            let pointTop = pointIndex < 12 ? pointY - POINT_HEIGHT : pointY;
+            let pointBottom = pointIndex < 12 ? pointY : pointY + POINT_HEIGHT;
             
-            // BREAKTHROUGH: Force sync after any move
-            queueForceSync("move_completed");
+            if (mouseX >= pointX - POINT_WIDTH/2 && mouseX <= pointX + POINT_WIDTH/2 &&
+                mouseY >= pointTop && mouseY <= pointBottom) {
+                
+                let checker;
+                
+                if (selectedChecker.pointIndex === -1) {
+                    checker = playerColor === 'white' ? whiteBar.pop() : blackBar.pop();
+                    console.log("Moving checker from bar to point:", pointIndex);
+                } else {
+                    checker = board[selectedChecker.pointIndex].splice(selectedChecker.checkerIndex, 1)[0];
+                    console.log("Moving checker from point", selectedChecker.pointIndex, "to point", pointIndex);
+                }
+                
+                // Check if hitting opponent's checker
+                if (board[pointIndex].length === 1 && board[pointIndex][0].color !== checker.color) {
+                    let hitChecker = board[pointIndex].pop();
+                    if (hitChecker.color === 'white') {
+                        whiteBar.push(hitChecker);
+                        gameStatus = "White checker was hit!";
+                        console.log("White checker was hit and moved to bar");
+                    } else {
+                        blackBar.push(hitChecker);
+                        gameStatus = "Black checker was hit!";
+                        console.log("Black checker was hit and moved to bar");
+                    }
+                }
+                
+                board[pointIndex].push(checker);
+                
+                // Handle dice removal for normal moves
+                if (isCombinedMove) {
+                    // Use both dice for combined move
+                    let combinedMove = combinedMoves[i - validMoves.length];
+                    // Remove the specific dice used
+                    let dieIndex1 = dice.indexOf(combinedMove.die1);
+                    if (dieIndex1 !== -1) dice.splice(dieIndex1, 1);
+                    
+                    let dieIndex2 = dice.indexOf(combinedMove.die2);
+                    if (dieIndex2 !== -1) dice.splice(dieIndex2, 1);
+                    
+                    console.log("Used combined dice:", combinedMove.die1, combinedMove.die2);
+                } else {
+                    // Remove one die
+                    if (dice.length > 0) {
+                        // Calculate which die was used
+                        let die;
+                        if (selectedChecker.pointIndex === -1) {
+                            // From bar
+                            die = playerColor === 'white' ? pointIndex + 1 : 24 - pointIndex;
+                        } else {
+                            // Normal move
+                            die = Math.abs(pointIndex - selectedChecker.pointIndex);
+                        }
+                        
+                        // Find and remove the die that was used
+                        let dieIndex = dice.indexOf(die);
+                        if (dieIndex !== -1) {
+                            dice.splice(dieIndex, 1);
+                            console.log("Used die:", die);
+                        } else {
+                            // If exact die not found, use first available die
+                            console.log("No exact die match, using first available die:", dice[0]);
+                            dice.splice(0, 1);
+                        }
+                        
+                        console.log("Remaining dice:", dice);
+                    }
+                }
+                
+                moved = true;
+                
+                if (gameStatus.indexOf("checker was hit") === -1 && 
+                    gameStatus.indexOf("borne off") === -1) {
+                    gameStatus = currentPlayer === 'player1' ? 
+                        player1Name + ' made a move!' : player2Name + ' made a move!';
+                }
+                
+                break;
+            }
         }
+        
+        if (!moved && selectedChecker.pointIndex !== -1) {
+            gameStatus = "Invalid move! Try again.";
+            console.log("Invalid move attempted");
+        }
+        
+        // Check for win or end of turn
+        if (moved) {
+            console.log("Move completed, checking game state");
+            
+            // Update UI directly to prevent loops
+            updateUIDirectly();
+            
+            // Check win condition
+            if ((playerColor === 'white' && whiteBearOff.length === 15) ||
+                (playerColor === 'black' && blackBearOff.length === 15)) {
+                checkWinCondition();
+            } else if (dice.length === 0 || !hasLegalMoves()) {
+                // Switch player
+                switchPlayer();
+            }
+            
+            // Save game state after move
+            saveGameStateThrottled();
+        }
+        
+        selectedChecker = null;
+        validMoves = [];
+        combinedMoves = [];
+        
     } catch (error) {
         console.error("Error in mouseReleased:", error);
+        selectedChecker = null;
+        validMoves = [];
+        combinedMoves = [];
     }
 }
 
@@ -221,70 +406,6 @@ function rollDice() {
         const gameStatusEl = document.getElementById('game-status');
         if (gameStatusEl) gameStatusEl.textContent = gameStatus;
         
-        // CRITICAL: Simulate debug button click to force synchronization
-        simulateDebugButtonClick();
-        
-        // Force immediate save to Firebase to ensure dice are synchronized
-        window.forcePlayerOneUpdate = true;
-        window.diceRolled = true;
-        
-        if (typeof window.saveGameState === 'function') {
-            console.log("Forcing immediate save after dice roll");
-            window.saveGameState();
-            
-            // Double-check save with a slight delay
-            setTimeout(() => {
-                console.log("Double-checking dice roll save");
-                window.saveGameState();
-                
-                // Force a redraw to ensure dice are visible
-                if (typeof redrawBoard === 'function') {
-                    redrawBoard();
-                }
-                
-                // Simulate debug button click again after delay
-                simulateDebugButtonClick();
-                
-                // Verify the dice roll was saved correctly
-                firebase.database().ref('games/' + window.gameId).once('value')
-                    .then((snapshot) => {
-                        const serverData = snapshot.val();
-                        if (!serverData || !serverData.dice || !Array.isArray(serverData.dice)) {
-                            console.error("Failed to save dice roll to server");
-                            return;
-                        }
-                        
-                        console.log("Server dice state:", JSON.stringify(serverData.dice));
-                        
-                        // Check if server dice match our local dice
-                        let diceMatch = true;
-                        if (serverData.dice.length !== dice.length) {
-                            diceMatch = false;
-                        } else {
-                            for (let i = 0; i < dice.length; i++) {
-                                if (serverData.dice[i] !== dice[i]) {
-                                    diceMatch = false;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        if (!diceMatch) {
-                            console.error("Server dice don't match local dice, retrying save");
-                            window.saveGameState();
-                            
-                            // Simulate debug button click again
-                            simulateDebugButtonClick();
-                        } else {
-                            console.log("Dice roll successfully saved to server");
-                        }
-                    })
-                    .catch((error) => {
-                        console.error("Error verifying dice roll save:", error);
-                    });
-            }, 500);
-        }
-        
         // Use a timeout to check for legal moves after UI updates
         setTimeout(() => {
             try {
@@ -299,24 +420,15 @@ function rollDice() {
                         switchPlayer();
                     }, 2000);
                 } else {
-                    // Force another save to ensure dice and legal moves are synchronized
-                    window.forcePlayerOneUpdate = true;
-                    if (typeof window.saveGameState === 'function') {
-                        window.saveGameState();
-                        
-                        // Simulate debug button click again
-                        simulateDebugButtonClick();
-                    }
+                    // Save game state after rolling
+                    saveGameStateThrottled();
                 }
             } catch (error) {
                 console.error("Error checking for legal moves:", error);
             } finally {
                 isRolling = false;
             }
-        }, 1000);
-        
-        // BREAKTHROUGH: Force sync after dice roll
-        queueForceSync("dice_rolled");
+        }, 500);
     } catch (error) {
         console.error("Error in rollDice:", error);
         isRolling = false;
@@ -326,66 +438,48 @@ function rollDice() {
 // Throttled version of saveGameState to prevent rapid Firebase updates
 function saveGameStateThrottled() {
     const currentTime = performance.now();
+    if (currentTime - lastSaveTime < SAVE_COOLDOWN) {
+        console.log("Throttling game state save (too recent)");
+        return;
+    }
     
-    // Force immediate save for moves to ensure they're synchronized
+    lastSaveTime = currentTime;
     if (typeof window.saveGameState === 'function') {
-        // Set a flag to force the update through
-        window.forcePlayerOneUpdate = true;
         window.saveGameState();
-        console.log("Forced game state save for move synchronization");
     }
 }
 
 // game-logic.js (Part 3) - Game state functions
 
 function switchPlayer() {
-    try {
-        if (!gameStarted) return;
-        
-        // Save the current state before switching
-        const previousPlayer = currentPlayer;
-        
-        // Switch the current player
-        currentPlayer = currentPlayer === 'player1' ? 'player2' : 'player1';
-        
-        // Reset turn-related variables
-        dice = [];
-        diceRolled = false;
-        selectedChecker = null;
-        validMoves = [];
-        combinedMoves = [];
-        turnAcknowledged = false;
-        lastTurnTimestamp = Date.now();
-        
-        // Update game status
-        gameStatus = (currentPlayer === 'player1' ? player1Name : player2Name) + "'s turn";
-        
-        // CRITICAL: Simulate debug button click to force synchronization
-        simulateDebugButtonClick();
-        
-        // Force immediate save to Firebase
-        window.forcePlayerOneUpdate = true;
+    console.log("Switching players");
+    
+    // Clear dice
+    dice = [];
+    diceRolled = false;
+    
+    // Switch current player
+    currentPlayer = (currentPlayer === 'player1') ? 'player2' : 'player1';
+    
+    // Update game status
+    gameStatus = (currentPlayer === 'player1' ? player1Name : player2Name) + "'s turn to roll";
+    
+    // CRITICAL: Force immediate save after player switch
+    if (typeof saveGameState === 'function') {
+        console.log("Forcing immediate save after player switch");
         saveGameState();
         
-        console.log("Switched player from", previousPlayer, "to", currentPlayer);
-        
-        // Save again after a delay
+        // Double-check save after a short delay
         setTimeout(() => {
-            window.forcePlayerOneUpdate = true;
+            console.log("Verifying player switch was saved...");
             saveGameState();
-            
-            // Simulate debug button click again
-            simulateDebugButtonClick();
         }, 500);
-        
-        // Start turn timeout monitor
-        monitorTurnTimeout();
-        
-        // BREAKTHROUGH: Force sync after player switch
-        queueForceSync("player_switched");
-    } catch (error) {
-        console.error("Error in switchPlayer:", error);
     }
+    
+    // Update UI
+    if (typeof updatePlayerInfo === 'function') updatePlayerInfo();
+    if (typeof updateDiceDisplay === 'function') updateDiceDisplay();
+    if (typeof updateGameStatus === 'function') updateGameStatus();
 }
 
 function calculateValidMoves(pointIndex, dice) {
@@ -548,7 +642,8 @@ function calculateValidMoves(pointIndex, dice) {
         combinedMoves = [];
     }
 }
-    // game-logic.js (Part 4) - Helper functions
+
+// game-logic.js (Part 4) - Helper functions
 
 function isValidBearOff(pointIndex, die, playerColor) {
     try {
@@ -755,7 +850,9 @@ function hasLegalMoves() {
         // If there's an error, assume there are no legal moves
         return false;
     }
-}// game-logic.js (Part 5) - Final helper functions
+}
+
+// game-logic.js (Part 5) - Final helper functions
 
 function checkWinCondition() {
     try {
@@ -801,24 +898,14 @@ function checkWinCondition() {
 // Check if current player can move
 function canPlayerMove() {
     try {
-        if (!gameStarted) return false;
+        console.log("Can player move check:", { playerRole: playerRole, currentPlayer: currentPlayer });
         
-        const playerRole = window.backgammonGame.playerRole;
-        if (playerRole === 'spectator') return false;
+        if (typeof playerRole === 'undefined') return false;
+        if (playerRole === "spectator") return false;
+        if (playerRole === "player1" && currentPlayer === "player1") return true;
+        if (playerRole === "player2" && currentPlayer === "player2") return true;
         
-        // Check if it's this player's turn
-        if ((playerRole === 'player1' && currentPlayer !== 'player1') ||
-            (playerRole === 'player2' && currentPlayer !== 'player2')) {
-            return false;
-        }
-        
-        // Acknowledge turn when player attempts to move
-        if (!turnAcknowledged) {
-            turnAcknowledged = true;
-            lastTurnTimestamp = Date.now();
-        }
-        
-        return true;
+        return false;
     } catch (error) {
         console.error("Error in canPlayerMove:", error);
         return false;
@@ -954,742 +1041,3 @@ addMouseListeners();
 
 // Log that the game logic has been loaded
 console.log("Game logic loaded successfully");
-
-// New function to monitor turn timeouts
-function monitorTurnTimeout() {
-    setTimeout(() => {
-        const currentTime = Date.now();
-        if (!turnAcknowledged && (currentTime - lastTurnTimestamp > TURN_TIMEOUT)) {
-            console.log("Turn timeout - forcing switch");
-            switchPlayer();
-        }
-    }, TURN_TIMEOUT);
-}
-
-// New function to execute move after state verification
-function executeMove() {
-    if (!selectedChecker) return;
-    
-    // Ensure we have a valid gameId
-    if (!window.gameId) {
-        console.error("No gameId found, cannot execute move");
-        return;
-    }
-    
-    // Check for win condition
-    if ((whiteBearOff && whiteBearOff.length === 15) || 
-        (blackBearOff && blackBearOff.length === 15)) {
-        console.log("Game already won");
-        selectedChecker = null;
-        validMoves = [];
-        combinedMoves = [];
-        return;
-    }
-    
-    let moved = false;
-    let playerColor = currentPlayer === 'player1' ? 'white' : 'black';
-    
-    // Store original board state for rollback if needed
-    const originalBoard = JSON.parse(JSON.stringify(board));
-    const originalWhiteBar = JSON.parse(JSON.stringify(whiteBar || []));
-    const originalBlackBar = JSON.parse(JSON.stringify(blackBar || []));
-    const originalWhiteBearOff = JSON.parse(JSON.stringify(whiteBearOff || []));
-    const originalBlackBearOff = JSON.parse(JSON.stringify(blackBearOff || []));
-    const originalDice = JSON.parse(JSON.stringify(dice || []));
-    
-    console.log("Original board state:", JSON.stringify(originalBoard));
-    
-    // Check valid moves (including combined moves)
-    let allPossibleMoves = [...validMoves];
-    let combinedMoveIndices = [];
-    
-    // Add combined move target indices
-    for (let i = 0; i < combinedMoves.length; i++) {
-        allPossibleMoves.push(combinedMoves[i].targetIndex);
-        combinedMoveIndices.push(allPossibleMoves.length - 1);
-    }
-    
-    console.log("Checking possible moves:", { validMoves: validMoves, combinedMoves: combinedMoves });
-    
-    for (let i = 0; i < allPossibleMoves.length; i++) {
-        const pointIndex = allPossibleMoves[i];
-        const isCombinedMove = combinedMoveIndices.includes(i);
-        
-        // Handle bearing off
-        if ((playerColor === 'white' && pointIndex === 24) || 
-            (playerColor === 'black' && pointIndex === -1)) {
-            
-            let checker;
-            
-            if (selectedChecker.pointIndex === -1) {
-                checker = playerColor === 'white' ? whiteBar.pop() : blackBar.pop();
-                console.log("Taking checker from bar for bearing off");
-            } else {
-                checker = board[selectedChecker.pointIndex].splice(selectedChecker.checkerIndex, 1)[0];
-                console.log("Taking checker from point for bearing off:", selectedChecker.pointIndex);
-            }
-            
-            if (playerColor === 'white') {
-                whiteBearOff.push(checker);
-                console.log("White checker borne off, total:", whiteBearOff.length);
-                
-                if (whiteBearOff.length === 15) {
-                    gameStatus = player1Name + " wins the game!";
-                    dice = [];
-                    diceRolled = false;
-                    selectedChecker = null;
-                    validMoves = [];
-                    combinedMoves = [];
-                    moved = true;
-                    
-                    console.log("White wins the game!");
-                    // Save final game state
-                    window.forcePlayerOneUpdate = true;
-                    saveGameState();
-                    break;
-                } else {
-                    gameStatus = 'White checker borne off!';
-                }
-            } else {
-                blackBearOff.push(checker);
-                console.log("Black checker borne off, total:", blackBearOff.length);
-                
-                if (blackBearOff.length === 15) {
-                    gameStatus = player2Name + " wins the game!";
-                    dice = [];
-                    diceRolled = false;
-                    selectedChecker = null;
-                    validMoves = [];
-                    combinedMoves = [];
-                    moved = true;
-                    
-                    console.log("Black wins the game!");
-                    // Save final game state
-                    window.forcePlayerOneUpdate = true;
-                    saveGameState();
-                    break;
-                } else {
-                    gameStatus = 'Black checker borne off!';
-                }
-            }
-            
-            // Handle dice removal
-            if (isCombinedMove) {
-                // Use both dice for combined move
-                let combinedMove = combinedMoves[i - validMoves.length];
-                // Remove the specific dice used
-                let dieIndex1 = dice.indexOf(combinedMove.die1);
-                if (dieIndex1 !== -1) dice.splice(dieIndex1, 1);
-                
-                let dieIndex2 = dice.indexOf(combinedMove.die2);
-                if (dieIndex2 !== -1) dice.splice(dieIndex2, 1);
-                
-                console.log("Used combined dice:", combinedMove.die1, combinedMove.die2);
-            } else {
-                // Remove one die
-                if (dice.length > 0) {
-                    dice.splice(0, 1);
-                    console.log("Used one die for bearing off, remaining dice:", dice);
-                }
-            }
-            
-            moved = true;
-            break;
-        }
-        
-        // Normal move within the board
-        let pointX = getPointX(pointIndex);
-        let pointY = getPointY(pointIndex);
-        let pointTop = pointIndex < 12 ? pointY - POINT_HEIGHT : pointY;
-        let pointBottom = pointIndex < 12 ? pointY : pointY + POINT_HEIGHT;
-        
-        if (mouseX >= pointX - POINT_WIDTH/2 && mouseX <= pointX + POINT_WIDTH/2 &&
-            mouseY >= pointTop && mouseY <= pointBottom) {
-            
-            let checker;
-            
-            if (selectedChecker.pointIndex === -1) {
-                checker = playerColor === 'white' ? whiteBar.pop() : blackBar.pop();
-                console.log("Moving checker from bar to point:", pointIndex);
-            } else {
-                checker = board[selectedChecker.pointIndex].splice(selectedChecker.checkerIndex, 1)[0];
-                console.log("Moving checker from point", selectedChecker.pointIndex, "to point", pointIndex);
-            }
-            
-            // Check if hitting opponent's checker
-            if (board[pointIndex].length === 1 && board[pointIndex][0].color !== checker.color) {
-                let hitChecker = board[pointIndex].pop();
-                if (hitChecker.color === 'white') {
-                    whiteBar.push(hitChecker);
-                    gameStatus = "White checker was hit!";
-                    console.log("White checker was hit and moved to bar");
-                } else {
-                    blackBar.push(hitChecker);
-                    gameStatus = "Black checker was hit!";
-                    console.log("Black checker was hit and moved to bar");
-                }
-            }
-            
-            board[pointIndex].push(checker);
-            
-            // Handle dice removal for normal moves
-            if (isCombinedMove) {
-                // Use both dice for combined move
-                let combinedMove = combinedMoves[i - validMoves.length];
-                // Remove the specific dice used
-                let dieIndex1 = dice.indexOf(combinedMove.die1);
-                if (dieIndex1 !== -1) dice.splice(dieIndex1, 1);
-                
-                let dieIndex2 = dice.indexOf(combinedMove.die2);
-                if (dieIndex2 !== -1) dice.splice(dieIndex2, 1);
-                
-                console.log("Used combined dice:", combinedMove.die1, combinedMove.die2);
-            } else {
-                // Remove one die
-                if (dice.length > 0) {
-                    // Calculate which die was used
-                    let die;
-                    if (selectedChecker.pointIndex === -1) {
-                        // From bar
-                        die = playerColor === 'white' ? pointIndex + 1 : 24 - pointIndex;
-                    } else {
-                        // Normal move
-                        die = Math.abs(pointIndex - selectedChecker.pointIndex);
-                    }
-                    
-                    // Find and remove the die that was used
-                    let dieIndex = dice.indexOf(die);
-                    if (dieIndex !== -1) {
-                        dice.splice(dieIndex, 1);
-                        console.log("Used die:", die);
-                    } else {
-                        // If exact die not found, use first available die
-                        console.log("No exact die match, using first available die:", dice[0]);
-                        dice.splice(0, 1);
-                    }
-                    
-                    console.log("Remaining dice:", dice);
-                }
-            }
-            
-            moved = true;
-            
-            if (gameStatus.indexOf("checker was hit") === -1 && 
-                gameStatus.indexOf("borne off") === -1) {
-                gameStatus = currentPlayer === 'player1' ? 
-                    player1Name + ' made a move!' : player2Name + ' made a move!';
-            }
-            
-            break;
-        }
-    }
-    
-    if (!moved && selectedChecker.pointIndex !== -1) {
-        gameStatus = "Invalid move! Try again.";
-        console.log("Invalid move attempted");
-    }
-    
-    // Check for win or end of turn
-    if (moved) {
-        console.log("Move completed, checking game state");
-        console.log("New board state:", JSON.stringify(board));
-        
-        // Update UI directly to prevent loops
-        updateUIDirectly();
-        
-        // CRITICAL: Simulate debug button click to force synchronization
-        simulateDebugButtonClick();
-        
-        // Force immediate save to ensure move is synchronized
-        window.forcePlayerOneUpdate = true;
-        window.moveCompleted = true;
-        
-        // Direct Firebase save without throttling
-        if (typeof window.saveGameState === 'function') {
-            console.log("Forcing immediate save after move");
-            window.saveGameState();
-            
-            // Force a redraw
-            if (typeof redrawBoard === 'function') {
-                redrawBoard();
-            }
-            
-            // Save again after a delay to ensure it's properly saved
-            setTimeout(() => {
-                console.log("Saving again after delay");
-                window.saveGameState();
-                
-                // Simulate debug button click again after delay
-                simulateDebugButtonClick();
-                
-                // Force another redraw
-                if (typeof redrawBoard === 'function') {
-                    redrawBoard();
-                }
-                
-                // Check if there are any more legal moves
-                if (dice.length === 0 || !hasLegalMoves()) {
-                    // Switch player
-                    switchPlayer();
-                }
-            }, 1000);
-        }
-    } else {
-        // If move failed, roll back to original state
-        console.log("Move failed, rolling back to original state");
-        board = JSON.parse(JSON.stringify(originalBoard));
-        whiteBar = JSON.parse(JSON.stringify(originalWhiteBar));
-        blackBar = JSON.parse(JSON.stringify(originalBlackBar));
-        whiteBearOff = JSON.parse(JSON.stringify(originalWhiteBearOff));
-        blackBearOff = JSON.parse(JSON.stringify(originalBlackBearOff));
-        dice = JSON.parse(JSON.stringify(originalDice));
-        
-        // Force redraw
-        if (typeof redrawBoard === 'function') {
-            redrawBoard();
-        }
-    }
-    
-    selectedChecker = null;
-    validMoves = [];
-    combinedMoves = [];
-}
-
-// Simulate debug button click to force synchronization
-function simulateDebugButtonClick() {
-    console.log("SIMULATING DEBUG BUTTON CLICK");
-    window.debugButtonClicked = true;
-    window.forcePlayerOneUpdate = true;
-    forceSyncNow();
-}
-
-// BREAKTHROUGH: Add a function to force immediate synchronization
-function forceSyncNow() {
-    console.log("FORCE SYNC NOW: Immediate synchronization requested");
-    window.forcePlayerOneUpdate = true;
-    window.debugButtonClicked = true;
-    saveGameStateWithVerification();
-}
-
-// CRITICAL FIX: Function to lock the current board state after a move
-function lockCurrentBoardState(reason) {
-    console.log("MOVE LOCK: Locking current board state", reason);
-    
-    // Create a deep copy of the current board
-    const boardCopy = [];
-    if (Array.isArray(window.board)) {
-        for (let i = 0; i < window.board.length; i++) {
-            boardCopy[i] = [];
-            if (Array.isArray(window.board[i])) {
-                for (let j = 0; j < window.board[i].length; j++) {
-                    if (window.board[i][j] && window.board[i][j].color) {
-                        boardCopy[i][j] = { color: window.board[i][j].color };
-                    }
-                }
-            }
-        }
-    }
-    
-    // Create deep copies of other game state
-    const whiteBarCopy = Array.isArray(window.whiteBar) ? 
-        window.whiteBar.map(checker => ({ color: checker.color })) : [];
-        
-    const blackBarCopy = Array.isArray(window.blackBar) ? 
-        window.blackBar.map(checker => ({ color: checker.color })) : [];
-        
-    const whiteBearOffCopy = Array.isArray(window.whiteBearOff) ? 
-        window.whiteBearOff.map(checker => ({ color: checker.color })) : [];
-        
-    const blackBearOffCopy = Array.isArray(window.blackBearOff) ? 
-        window.blackBearOff.map(checker => ({ color: checker.color })) : [];
-    
-    // Store the locked state
-    lastBoardState = {
-        board: boardCopy,
-        whiteBar: whiteBarCopy,
-        blackBar: blackBarCopy,
-        whiteBearOff: whiteBearOffCopy,
-        blackBearOff: blackBearOffCopy,
-        currentPlayer: window.currentPlayer,
-        dice: [...window.dice],
-        timestamp: Date.now(),
-        reason: reason
-    };
-    
-    // NETWORK FIX: Save to local storage as well
-    saveStateToLocalStorage();
-    
-    // Set up reversion prevention
-    if (moveReversionTimeout) {
-        clearTimeout(moveReversionTimeout);
-    }
-    
-    moveReversionTimeout = setTimeout(checkForReversion, 1000);
-}
-
-// CRITICAL FIX: Function to check if the board has reverted and fix it
-function checkForReversion() {
-    if (!lastBoardState) return;
-    
-    console.log("MOVE LOCK: Checking for reversion");
-    
-    // Check if the board has reverted
-    let hasReverted = false;
-    
-    // Compare board states
-    if (Array.isArray(window.board) && Array.isArray(lastBoardState.board)) {
-        for (let i = 0; i < Math.min(window.board.length, lastBoardState.board.length); i++) {
-            const currentPoint = window.board[i];
-            const lockedPoint = lastBoardState.board[i];
-            
-            if (currentPoint.length !== lockedPoint.length) {
-                hasReverted = true;
-                break;
-            }
-            
-            for (let j = 0; j < currentPoint.length; j++) {
-                if (currentPoint[j].color !== lockedPoint[j].color) {
-                    hasReverted = true;
-                    break;
-                }
-            }
-            
-            if (hasReverted) break;
-        }
-    }
-    
-    // Also check bars and bear-offs
-    if (!hasReverted) {
-        if (window.whiteBar.length !== lastBoardState.whiteBar.length ||
-            window.blackBar.length !== lastBoardState.blackBar.length ||
-            window.whiteBearOff.length !== lastBoardState.whiteBearOff.length ||
-            window.blackBearOff.length !== lastBoardState.blackBearOff.length) {
-            hasReverted = true;
-        }
-    }
-    
-    // NETWORK FIX: Also check if we should restore from local storage
-    if (!hasReverted) {
-        // Try to load from local storage if it's been more than 5 seconds since our last save
-        if (Date.now() - lastSavedStateTimestamp > 5000) {
-            loadStateFromLocalStorage();
-        }
-    }
-    
-    // If the board has reverted, restore it
-    if (hasReverted) {
-        console.log("MOVE LOCK: Board has reverted, restoring locked state");
-        
-        // Restore the board
-        window.board = lastBoardState.board;
-        window.whiteBar = lastBoardState.whiteBar;
-        window.blackBar = lastBoardState.blackBar;
-        window.whiteBearOff = lastBoardState.whiteBearOff;
-        window.blackBearOff = lastBoardState.blackBearOff;
-        window.currentPlayer = lastBoardState.currentPlayer;
-        window.dice = [...lastBoardState.dice];
-        
-        // Force a redraw
-        if (typeof redrawBoard === 'function') {
-            redrawBoard();
-        }
-        
-        // Force a save to Firebase
-        window.forcePlayerOneUpdate = true;
-        window.debugButtonClicked = true;
-        forceSyncNow();
-        
-        // Schedule another check
-        moveReversionTimeout = setTimeout(checkForReversion, 1000);
-    } else {
-        console.log("MOVE LOCK: No reversion detected");
-        
-        // Schedule another check just to be safe
-        moveReversionTimeout = setTimeout(checkForReversion, 1000);
-    }
-}
-
-// CRITICAL FIX: Override executeMove to lock the board state after a move
-const originalExecuteMove = window.executeMove || function() {};
-window.executeMove = function(fromPoint, toPoint) {
-    const result = originalExecuteMove.apply(this, arguments);
-    
-    if (result) {
-        console.log("Move executed, locking board state");
-        lockCurrentBoardState("move_executed");
-        
-        // Also force a sync
-        window.forcePlayerOneUpdate = true;
-        window.debugButtonClicked = true;
-        forceSyncNow();
-        
-        // NETWORK FIX: Increment game state version
-        window.gameStateVersion = (window.gameStateVersion || 0) + 1;
-    }
-    
-    return result;
-};
-
-// CRITICAL FIX: Override rollDice to lock the board state after rolling
-const originalRollDice = window.rollDice || function() {};
-window.rollDice = function() {
-    const result = originalRollDice.apply(this, arguments);
-    
-    console.log("Dice rolled, locking board state");
-    lockCurrentBoardState("dice_rolled");
-    
-    // Also force a sync
-    window.forcePlayerOneUpdate = true;
-    window.debugButtonClicked = true;
-    forceSyncNow();
-    
-    // NETWORK FIX: Increment game state version
-    window.gameStateVersion = (window.gameStateVersion || 0) + 1;
-    
-    return result;
-};
-
-// CRITICAL FIX: Override switchPlayer to lock the board state after switching
-const originalSwitchPlayer = window.switchPlayer || function() {};
-window.switchPlayer = function() {
-    const result = originalSwitchPlayer.apply(this, arguments);
-    
-    console.log("Player switched, locking board state");
-    lockCurrentBoardState("player_switched");
-    
-    // Also force a sync
-    window.forcePlayerOneUpdate = true;
-    window.debugButtonClicked = true;
-    forceSyncNow();
-    
-    // NETWORK FIX: Increment game state version
-    window.gameStateVersion = (window.gameStateVersion || 0) + 1;
-    
-    return result;
-};
-
-// BREAKTHROUGH: Process the sync queue periodically
-function processForceSyncQueue() {
-    if (forceSyncQueue.length > 0 && !isSyncing && Date.now() - lastSyncTime > SYNC_INTERVAL) {
-        isSyncing = true;
-        lastSyncTime = Date.now();
-        
-        const syncItem = forceSyncQueue.shift();
-        console.log("FORCE SYNC: Processing queued sync", syncItem);
-        
-        // Always set force update flag to true for queued syncs
-        window.forcePlayerOneUpdate = true;
-        window.debugButtonClicked = true; // This flag seems to help with synchronization
-        
-        // Call save with verification
-        saveGameStateWithVerification(() => {
-            isSyncing = false;
-            // Process next item in queue if available
-            setTimeout(processForceSyncQueue, 100);
-        });
-    }
-}
-
-// Set up periodic processing of the sync queue
-setInterval(processForceSyncQueue, 200);
-
-// BREAKTHROUGH: Enhanced save with verification
-function saveGameStateWithVerification(callback) {
-    if (typeof saveGameState !== 'function') {
-        console.error("saveGameState function not available");
-        if (callback) callback(false);
-        return;
-    }
-    
-    // Save current state for verification
-    const currentBoard = JSON.stringify(window.board);
-    const currentDice = JSON.stringify(window.dice);
-    const currentPlayer = window.currentPlayer;
-    
-    console.log("FORCE SYNC: Saving game state with verification");
-    
-    // Force update flags
-    window.forcePlayerOneUpdate = true;
-    window.debugButtonClicked = true;
-    
-    // NETWORK FIX: Save to local storage first
-    saveStateToLocalStorage();
-    
-    // Call the original save function
-    saveGameState();
-    
-    // Verify the save after a short delay
-    setTimeout(() => {
-        // Load the game state from Firebase to verify
-        if (typeof firebase !== 'undefined' && firebase.database && window.gameId) {
-            firebase.database().ref('games/' + window.gameId).once('value')
-                .then((snapshot) => {
-                    const savedData = snapshot.val();
-                    if (!savedData) {
-                        console.error("SYNC ERROR: No data found in Firebase");
-                        retrySync(callback);
-                        return;
-                    }
-                    
-                    // Verify critical game state elements
-                    const savedBoard = JSON.stringify(savedData.board);
-                    const savedDice = JSON.stringify(savedData.dice);
-                    const savedPlayer = savedData.currentPlayer;
-                    
-                    if (savedBoard !== currentBoard || savedDice !== currentDice || savedPlayer !== currentPlayer) {
-                        console.error("SYNC ERROR: Verification failed, data mismatch");
-                        console.log("Local:", { board: currentBoard, dice: currentDice, player: currentPlayer });
-                        console.log("Saved:", { board: savedBoard, dice: savedDice, player: savedPlayer });
-                        retrySync(callback);
-                    } else {
-                        console.log("SYNC SUCCESS: Verification passed");
-                        syncAttempts = 0;
-                        if (callback) callback(true);
-                    }
-                })
-                .catch((error) => {
-                    console.error("SYNC ERROR: Firebase read error", error);
-                    retrySync(callback);
-                });
-        } else {
-            console.warn("SYNC WARNING: Firebase not available for verification");
-            if (callback) callback(false);
-        }
-    }, 1000);
-}
-
-// BREAKTHROUGH: Retry sync if verification fails
-function retrySync(callback) {
-    syncAttempts++;
-    if (syncAttempts < MAX_SYNC_ATTEMPTS) {
-        console.log(`SYNC RETRY: Attempt ${syncAttempts} of ${MAX_SYNC_ATTEMPTS}`);
-        setTimeout(() => {
-            saveGameStateWithVerification(callback);
-        }, 1000);
-    } else {
-        console.error("SYNC FAILED: Max retry attempts reached");
-        syncAttempts = 0;
-        if (callback) callback(false);
-    }
-}
-
-// BREAKTHROUGH: Queue a forced sync
-function queueForceSync(reason) {
-    forceSyncQueue.push({
-        reason: reason,
-        timestamp: Date.now()
-    });
-    
-    // Process immediately if possible
-    processForceSyncQueue();
-}
-
-// NETWORK FIX: Function to save game state to local storage
-function saveStateToLocalStorage() {
-    if (!window.gameId) return;
-    
-    try {
-        console.log("NETWORK FIX: Saving game state to local storage");
-        
-        // Create a state object with all critical game data
-        const state = {
-            board: JSON.parse(JSON.stringify(window.board)),
-            whiteBar: JSON.parse(JSON.stringify(window.whiteBar)),
-            blackBar: JSON.parse(JSON.stringify(window.blackBar)),
-            whiteBearOff: JSON.parse(JSON.stringify(window.whiteBearOff)),
-            blackBearOff: JSON.parse(JSON.stringify(window.blackBearOff)),
-            currentPlayer: window.currentPlayer,
-            dice: [...window.dice],
-            diceRolled: window.diceRolled,
-            playerRole: window.playerRole,
-            timestamp: Date.now(),
-            gameStateVersion: window.gameStateVersion || 0
-        };
-        
-        // Save to local storage with game ID as part of the key
-        localStorage.setItem(LOCAL_STORAGE_KEY + window.gameId + '_' + window.playerRole, JSON.stringify(state));
-        lastSavedStateTimestamp = state.timestamp;
-        
-        console.log("NETWORK FIX: Game state saved to local storage", { timestamp: state.timestamp });
-    } catch (error) {
-        console.error("NETWORK FIX: Error saving to local storage", error);
-    }
-}
-
-// NETWORK FIX: Function to load game state from local storage
-function loadStateFromLocalStorage() {
-    if (!window.gameId || !window.playerRole) return false;
-    
-    try {
-        console.log("NETWORK FIX: Attempting to load game state from local storage");
-        
-        // Get state from local storage
-        const stateJson = localStorage.getItem(LOCAL_STORAGE_KEY + window.gameId + '_' + window.playerRole);
-        if (!stateJson) {
-            console.log("NETWORK FIX: No saved state found in local storage");
-            return false;
-        }
-        
-        const state = JSON.parse(stateJson);
-        
-        // Check if state is valid and recent (within last 30 minutes)
-        if (!state || !state.timestamp || Date.now() - state.timestamp > 30 * 60 * 1000) {
-            console.log("NETWORK FIX: Saved state is too old or invalid");
-            return false;
-        }
-        
-        console.log("NETWORK FIX: Found valid saved state in local storage", { timestamp: state.timestamp });
-        
-        // Only restore if we're the same player who saved it
-        if (state.playerRole !== window.playerRole) {
-            console.log("NETWORK FIX: Saved state is for a different player role");
-            return false;
-        }
-        
-        // Check if the saved state is newer than the current state
-        if (state.gameStateVersion <= (window.gameStateVersion || 0)) {
-            console.log("NETWORK FIX: Current state is newer than saved state");
-            return false;
-        }
-        
-        // Restore the state
-        window.board = state.board;
-        window.whiteBar = state.whiteBar;
-        window.blackBar = state.blackBar;
-        window.whiteBearOff = state.whiteBearOff;
-        window.blackBearOff = state.blackBearOff;
-        window.currentPlayer = state.currentPlayer;
-        window.dice = state.dice;
-        window.diceRolled = state.diceRolled;
-        window.gameStateVersion = state.gameStateVersion;
-        
-        console.log("NETWORK FIX: Game state restored from local storage");
-        
-        // Force a redraw
-        if (typeof redrawBoard === 'function') {
-            redrawBoard();
-        }
-        
-        // Force a save to Firebase
-        window.forcePlayerOneUpdate = true;
-        window.debugButtonClicked = true;
-        forceSyncNow();
-        
-        return true;
-    } catch (error) {
-        console.error("NETWORK FIX: Error loading from local storage", error);
-        return false;
-    }
-}
-
-// NETWORK FIX: Function to check if we should use local storage instead of Firebase
-function shouldUseLocalStorage() {
-    // Always use local storage for the active player
-    return window.playerRole === 'player1' && window.currentPlayer === 'player1' ||
-           window.playerRole === 'player2' && window.currentPlayer === 'player2';
-}
-
-// NETWORK FIX: Initialize by loading from local storage if available
-setTimeout(() => {
-    loadStateFromLocalStorage();
-}, 3000); // Wait for everything to initialize first

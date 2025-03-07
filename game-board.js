@@ -1,6 +1,5 @@
 // game-board.js - Complete implementation
 // This file handles drawing the game board and visual elements
-// Last synchronized: Version check - March 7, 2025
 
 // Game configurations - using var to avoid redeclaration errors
 if (typeof BOARD_WIDTH === 'undefined') var BOARD_WIDTH = 800;
@@ -414,64 +413,41 @@ function getCheckerY(pointIndex, checkerIndex) {
 // Check if both players have joined and force game to start if needed
 function checkAndStartGame() {
     try {
-        console.log("CRITICAL: Forcing game to start and synchronize...");
+        safeDebugLog("Checking if game can start...");
         
-        // Always force game to start when called
-        gameStarted = true;
-        
-        // Hide waiting message for player 1
-        const waitingMessage = document.getElementById('waiting-message');
-        const playerJoin = document.getElementById('player-join');
-        const gameControls = document.getElementById('game-controls');
-        
-        if (waitingMessage) waitingMessage.classList.add('hidden');
-        if (playerJoin) playerJoin.classList.add('hidden');
-        if (gameControls) gameControls.classList.remove('hidden');
-        
-        // Enable roll button for player 1
-        if (currentPlayer === 'player1' && playerRole === 'player1') {
-            const rollButton = document.getElementById('roll-button');
-            if (rollButton) rollButton.disabled = false;
-        }
-        
-        // Update UI
-        const gameStatusEl = document.getElementById('game-status');
-        if (gameStatusEl) gameStatusEl.textContent = gameStatus || (player1Name + "'s turn to roll");
-        
-        // Update other UI elements without using functions that might cause loops
-        updateUIDirectly();
-        
-        // Force immediate save to Firebase with maximum priority
-        if (typeof saveGameState === 'function') {
-            // Set flags to force update
-            window.forcePlayerOneUpdate = true;
+        if (player1Name !== "Player 1" && player2Name !== "Player 2") {
+            safeDebugLog("Both players have joined, forcing game to start");
             
-            // Save immediately
-            saveGameState();
+            // Force UI update
+            gameStarted = true;
             
-            // Save again after a delay to ensure it's properly saved
+            // Hide waiting message for player 1
+            const waitingMessage = document.getElementById('waiting-message');
+            const playerJoin = document.getElementById('player-join');
+            const gameControls = document.getElementById('game-controls');
+            
+            if (waitingMessage) waitingMessage.classList.add('hidden');
+            if (playerJoin) playerJoin.classList.add('hidden');
+            if (gameControls) gameControls.classList.remove('hidden');
+            
+            // Enable roll button for player 1
+            if (currentPlayer === 'player1' && playerRole === 'player1') {
+                const rollButton = document.getElementById('roll-button');
+                if (rollButton) rollButton.disabled = false;
+            }
+            
+            // Update UI
+            const gameStatusEl = document.getElementById('game-status');
+            if (gameStatusEl) gameStatusEl.textContent = player1Name + "'s turn to roll";
+            
+            // Update other UI elements without using functions that might cause loops
+            updateUIDirectly();
+            
+            // Save game state after a delay
             setTimeout(() => {
-                window.forcePlayerOneUpdate = true;
-                saveGameState();
-                
-                // Force a redraw
-                if (typeof redrawBoard === 'function') {
-                    redrawBoard();
-                }
-                
-                // Update UI again
-                updateUIDirectly();
-                
-                // Save one more time after another delay
-                setTimeout(() => {
-                    window.forcePlayerOneUpdate = true;
+                if (typeof saveGameState === 'function') {
                     saveGameState();
-                    
-                    // Force another redraw
-                    if (typeof redrawBoard === 'function') {
-                        redrawBoard();
-                    }
-                }, 500);
+                }
             }, 500);
         }
     } catch (error) {
@@ -678,53 +654,6 @@ function debugBoard() {
     console.log("Black Bear Off:", blackBearOff ? blackBearOff.length : 0);
     console.log("=======================");
 }
-
-// Function to force redraw of the board
-function redrawBoard() {
-    try {
-        console.log("Forcing board redraw");
-        
-        // Ensure board is properly initialized
-        if (!board || !Array.isArray(board) || board.length === 0) {
-            console.log("Board not initialized, initializing now");
-            initializeBoard();
-            return;
-        }
-        
-        // Log the current board state
-        console.log("Current board state for redraw:", JSON.stringify(board));
-        
-        // Clear the canvas
-        clear();
-        
-        // Redraw the board
-        drawBoard();
-        
-        // Redraw the bar
-        drawBar();
-        
-        // Redraw bear off areas
-        drawBearOffAreas();
-        
-        // Redraw all checkers
-        drawCheckers();
-        
-        // Redraw valid moves if a checker is selected
-        if (selectedChecker && validMoves.length > 0) {
-            drawValidMoves();
-        }
-        
-        // Update UI elements
-        updateUIDirectly();
-        
-        console.log("Board redraw complete");
-    } catch (error) {
-        console.error("Error in redrawBoard:", error);
-    }
-}
-
-// Export the redrawBoard function to the global scope
-window.redrawBoard = redrawBoard;
 
 // Make these functions globally accessible
 window.initializeBoard = initializeBoard;

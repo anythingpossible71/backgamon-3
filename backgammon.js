@@ -1,5 +1,4 @@
 // Backgammon Game Implementation
-// Last synchronized: Version check - March 7, 2025
 console.log("Loading backgammon.js");
 
 // Game configurations
