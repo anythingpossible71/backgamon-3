@@ -117,6 +117,9 @@ function saveGameState() {
         // Increment version number for this update
         gameStateVersion++;
         
+        // Check if both players have joined
+        const bothPlayersJoined = player1Name !== "Player 1" && player2Name !== "Player 2";
+        
         const gameData = {
             board: board,
             whiteBar: whiteBar,
@@ -129,7 +132,7 @@ function saveGameState() {
             gameStatus: gameStatus,
             player1Name: player1Name,
             player2Name: player2Name,
-            gameStarted: gameStarted,
+            gameStarted: bothPlayersJoined, // Only set as started when both players have joined
             version: gameStateVersion,
             timestamp: firebase.database.ServerValue.TIMESTAMP
         };
@@ -145,6 +148,29 @@ function saveGameState() {
         firebase.database().ref('games/' + gameId).update(safeData)
             .then(() => {
                 console.log("Game state saved successfully, version:", gameStateVersion);
+                
+                // If both players just joined, force UI update
+                if (bothPlayersJoined && !gameStarted) {
+                    gameStarted = true;
+                    const waitingMessage = document.getElementById('waiting-message');
+                    const playerJoin = document.getElementById('player-join');
+                    const gameControls = document.getElementById('game-controls');
+                    
+                    if (waitingMessage) waitingMessage.classList.add('hidden');
+                    if (playerJoin) playerJoin.classList.add('hidden');
+                    if (gameControls) gameControls.classList.remove('hidden');
+                    
+                    // Update game status
+                    gameStatus = player1Name + "'s turn to roll";
+                    const gameStatusEl = document.getElementById('game-status');
+                    if (gameStatusEl) gameStatusEl.textContent = gameStatus;
+                    
+                    // Enable roll button for player 1
+                    if (playerRole === 'player1') {
+                        const rollButton = document.getElementById('roll-button');
+                        if (rollButton) rollButton.disabled = false;
+                    }
+                }
             })
             .catch((error) => {
                 console.error("Error saving game state:", error);
@@ -300,20 +326,53 @@ function processFirebaseUpdate(gameData) {
     try {
         console.log("Processing Firebase update", gameData);
         
-        // Update player names
-        if (gameData.player1Name) {
+        // Update player names and trigger UI updates immediately
+        let playersChanged = false;
+        
+        if (gameData.player1Name && gameData.player1Name !== player1Name) {
             player1Name = gameData.player1Name;
             const p1NameEl = document.getElementById('player1-name');
             if (p1NameEl) p1NameEl.textContent = player1Name;
+            playersChanged = true;
         }
         
-        if (gameData.player2Name) {
+        if (gameData.player2Name && gameData.player2Name !== player2Name) {
             player2Name = gameData.player2Name;
             const p2NameEl = document.getElementById('player2-name');
             if (p2NameEl) p2NameEl.textContent = player2Name;
+            playersChanged = true;
         }
         
-        // If game has started, update game state
+        // If players changed, update game state
+        if (playersChanged) {
+            // Check if both players have joined
+            if (player1Name !== "Player 1" && player2Name !== "Player 2") {
+                // Set game as started
+                gameStarted = true;
+                
+                // Hide waiting message and show game controls
+                const waitingMessage = document.getElementById('waiting-message');
+                const playerJoin = document.getElementById('player-join');
+                const gameControls = document.getElementById('game-controls');
+                
+                if (waitingMessage) waitingMessage.classList.add('hidden');
+                if (playerJoin) playerJoin.classList.add('hidden');
+                if (gameControls) gameControls.classList.remove('hidden');
+                
+                // Update game status
+                gameStatus = player1Name + "'s turn to roll";
+                const gameStatusEl = document.getElementById('game-status');
+                if (gameStatusEl) gameStatusEl.textContent = gameStatus;
+                
+                // Enable roll button for player 1
+                if (playerRole === 'player1') {
+                    const rollButton = document.getElementById('roll-button');
+                    if (rollButton) rollButton.disabled = false;
+                }
+            }
+        }
+        
+        // Update game state if game has started
         if (gameData.gameStarted) {
             gameStarted = true;
             
@@ -327,17 +386,13 @@ function processFirebaseUpdate(gameData) {
             if (gameData.dice) dice = gameData.dice;
             if (gameData.diceRolled !== undefined) diceRolled = gameData.diceRolled;
             if (gameData.gameStatus) gameStatus = gameData.gameStatus;
+            
+            // Update UI directly
+            if (typeof updateUIDirectly === 'function') {
+                updateUIDirectly();
+            }
         }
         
-        // Update UI directly
-        if (typeof updateUIDirectly === 'function') {
-            updateUIDirectly();
-        }
-        
-        // Check if both players have joined and start the game if needed
-        if (typeof checkAndStartGame === 'function' && player1Name !== "Player 1" && player2Name !== "Player 2") {
-            checkAndStartGame();
-        }
     } catch (error) {
         console.error("Error updating game from Firebase:", error);
     } finally {
