@@ -1142,62 +1142,38 @@ function executeMove() {
         window.forcePlayerOneUpdate = true;
         window.moveCompleted = true;
         
+        // CRITICAL: Use the same approach as the debug button
+        // Force the game to start (this is what makes the debug button work)
+        if (typeof checkAndStartGame === 'function') {
+            checkAndStartGame();
+        }
+        
         // Direct Firebase save without throttling
         if (typeof window.saveGameState === 'function') {
             console.log("Forcing immediate save after move");
             window.saveGameState();
             
-            // Verify the move was saved correctly
-            setTimeout(() => {
-                firebase.database().ref('games/' + window.gameId).once('value')
-                    .then((snapshot) => {
-                        const serverData = snapshot.val();
-                        if (!serverData || !serverData.board) {
-                            console.error("Failed to save move to server");
-                            return;
-                        }
-                        
-                        console.log("Server board state:", JSON.stringify(serverData.board));
-                        
-                        // Check if server state matches our local state
-                        let serverBoardMatches = true;
-                        for (let i = 0; i < board.length; i++) {
-                            if (!serverData.board[i] && (!board[i] || board[i].length === 0)) {
-                                continue; // Both empty, that's fine
-                            }
-                            
-                            if (!serverData.board[i] || !board[i] || 
-                                serverData.board[i].length !== board[i].length) {
-                                serverBoardMatches = false;
-                                break;
-                            }
-                        }
-                        
-                        if (!serverBoardMatches) {
-                            console.error("Server board state doesn't match local state, retrying save");
-                            window.saveGameState();
-                        } else {
-                            console.log("Move successfully saved to server");
-                        }
-                    })
-                    .catch((error) => {
-                        console.error("Error verifying move save:", error);
-                    });
-            }, 1000);
-            
-            // Force redraw
+            // Force a redraw
             if (typeof redrawBoard === 'function') {
                 redrawBoard();
             }
-        }
-        
-        // Check win condition
-        if ((playerColor === 'white' && whiteBearOff.length === 15) ||
-            (playerColor === 'black' && blackBearOff.length === 15)) {
-            checkWinCondition();
-        } else if (dice.length === 0 || !hasLegalMoves()) {
-            // Switch player
-            switchPlayer();
+            
+            // Save again after a delay to ensure it's properly saved
+            setTimeout(() => {
+                console.log("Saving again after delay");
+                window.saveGameState();
+                
+                // Force another redraw
+                if (typeof redrawBoard === 'function') {
+                    redrawBoard();
+                }
+                
+                // Check if there are any more legal moves
+                if (dice.length === 0 || !hasLegalMoves()) {
+                    // Switch player
+                    switchPlayer();
+                }
+            }, 1000);
         }
     } else {
         // If move failed, roll back to original state

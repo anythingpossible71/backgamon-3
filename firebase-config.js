@@ -92,22 +92,25 @@ function prepareGameDataForSaving(gameData) {
 function saveGameState() {
     const now = Date.now();
     
-    // Check if we're trying to save too frequently, unless it's a forced update
-    if (now - lastUpdateTime < SAVE_THROTTLE && !window.forcePlayerOneUpdate && !window.moveCompleted && !window.diceRolled) {
-        console.log("Throttling Firebase update (too frequent)");
-        return;
+    // Always save if forcePlayerOneUpdate is true
+    if (window.forcePlayerOneUpdate !== true) {
+        // Check if we're trying to save too frequently
+        if (now - lastUpdateTime < SAVE_THROTTLE) {
+            console.log("Throttling Firebase update (too frequent)");
+            return;
+        }
+        
+        // Skip saving if already updating from Firebase
+        if (isCurrentlyUpdating) {
+            console.log("Currently updating from Firebase, save skipped");
+            return;
+        }
     }
     
     lastUpdateTime = now;
     
     if (!gameId) {
         console.log("No gameId found, cannot save state");
-        return;
-    }
-    
-    // Skip saving if already updating from Firebase, unless it's a forced update
-    if (isCurrentlyUpdating && !window.forcePlayerOneUpdate && !window.moveCompleted && !window.diceRolled) {
-        console.log("Currently updating from Firebase, save skipped");
         return;
     }
     
@@ -188,7 +191,7 @@ function saveGameState() {
             gameStatus: gameStatus,
             player1Name: player1Name,
             player2Name: player2Name,
-            gameStarted: bothPlayersJoined || isForceUpdate, // Set as started when both players joined or forced
+            gameStarted: true, // Always set as started when saving
             forceUpdate: isForceUpdate, // Special flag for player 1
             moveCompleted: isMoveCompleted, // Flag for move completion
             diceRolled: isDiceRolled, // Flag for dice roll
@@ -216,32 +219,14 @@ function saveGameState() {
             .then(() => {
                 console.log("Game state saved successfully, version:", gameStateVersion);
                 
-                // If both players just joined, force UI update
-                if (bothPlayersJoined && !gameStarted) {
-                    gameStarted = true;
-                    const waitingMessage = document.getElementById('waiting-message');
-                    const playerJoin = document.getElementById('player-join');
-                    const gameControls = document.getElementById('game-controls');
-                    
-                    if (waitingMessage) waitingMessage.classList.add('hidden');
-                    if (playerJoin) playerJoin.classList.add('hidden');
-                    if (gameControls) gameControls.classList.remove('hidden');
-                    
-                    // Update game status
-                    gameStatus = player1Name + "'s turn to roll";
-                    const gameStatusEl = document.getElementById('game-status');
-                    if (gameStatusEl) gameStatusEl.textContent = gameStatus;
-                    
-                    // Enable roll button for player 1
-                    if (playerRole === 'player1') {
-                        const rollButton = document.getElementById('roll-button');
-                        if (rollButton) rollButton.disabled = false;
-                    }
-                }
-                
                 // Force a redraw after saving
                 if (typeof redrawBoard === 'function') {
                     redrawBoard();
+                }
+                
+                // Update UI directly
+                if (typeof updateUIDirectly === 'function') {
+                    updateUIDirectly();
                 }
             })
             .catch((error) => {

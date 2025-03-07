@@ -415,38 +415,49 @@ function checkAndStartGame() {
     try {
         safeDebugLog("Checking if game can start...");
         
-        if (player1Name !== "Player 1" && player2Name !== "Player 2") {
-            safeDebugLog("Both players have joined, forcing game to start");
+        // Always force game to start when called
+        safeDebugLog("Forcing game to start");
+        
+        // Force UI update
+        gameStarted = true;
+        
+        // Hide waiting message for player 1
+        const waitingMessage = document.getElementById('waiting-message');
+        const playerJoin = document.getElementById('player-join');
+        const gameControls = document.getElementById('game-controls');
+        
+        if (waitingMessage) waitingMessage.classList.add('hidden');
+        if (playerJoin) playerJoin.classList.add('hidden');
+        if (gameControls) gameControls.classList.remove('hidden');
+        
+        // Enable roll button for player 1
+        if (currentPlayer === 'player1' && playerRole === 'player1') {
+            const rollButton = document.getElementById('roll-button');
+            if (rollButton) rollButton.disabled = false;
+        }
+        
+        // Update UI
+        const gameStatusEl = document.getElementById('game-status');
+        if (gameStatusEl) gameStatusEl.textContent = gameStatus || (player1Name + "'s turn to roll");
+        
+        // Update other UI elements without using functions that might cause loops
+        updateUIDirectly();
+        
+        // Force immediate save to Firebase
+        if (typeof saveGameState === 'function') {
+            // Set flags to force update
+            window.forcePlayerOneUpdate = true;
             
-            // Force UI update
-            gameStarted = true;
+            // Save immediately
+            saveGameState();
             
-            // Hide waiting message for player 1
-            const waitingMessage = document.getElementById('waiting-message');
-            const playerJoin = document.getElementById('player-join');
-            const gameControls = document.getElementById('game-controls');
-            
-            if (waitingMessage) waitingMessage.classList.add('hidden');
-            if (playerJoin) playerJoin.classList.add('hidden');
-            if (gameControls) gameControls.classList.remove('hidden');
-            
-            // Enable roll button for player 1
-            if (currentPlayer === 'player1' && playerRole === 'player1') {
-                const rollButton = document.getElementById('roll-button');
-                if (rollButton) rollButton.disabled = false;
-            }
-            
-            // Update UI
-            const gameStatusEl = document.getElementById('game-status');
-            if (gameStatusEl) gameStatusEl.textContent = player1Name + "'s turn to roll";
-            
-            // Update other UI elements without using functions that might cause loops
-            updateUIDirectly();
-            
-            // Save game state after a delay
+            // Save again after a delay to ensure it's properly saved
             setTimeout(() => {
-                if (typeof saveGameState === 'function') {
-                    saveGameState();
+                saveGameState();
+                
+                // Force a redraw
+                if (typeof redrawBoard === 'function') {
+                    redrawBoard();
                 }
             }, 500);
         }
