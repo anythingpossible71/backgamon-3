@@ -111,16 +111,7 @@
         .hidden {
             display: none;
         }
-        #debug-info {
-            padding: 10px;
-            margin-top: 10px;
-            background-color: #f5f5f5;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 12px;
-            display: none;
-        }
+        /* Removing debug-related CSS styles */
         /* Version Display Styles */
         #version-banner {
             position: fixed;
@@ -170,13 +161,8 @@
     window.BAR_WIDTH = 50;
     window.BEAR_OFF_WIDTH = 80;
     
-    // Enable debug mode
-    window.debugMode = true;
-    
-    // Debug logger function
+    // Debug logger function (simplified)
     window.debugLog = function(message, data) {
-        if (!window.debugMode) return;
-        
         if (data) {
             console.log("[DEBUG] " + message, data);
         } else {
@@ -199,7 +185,7 @@
     </div>
     
     <!-- Auto-refresh status indicator -->
-    <div id="sync-status" style="position: fixed; top: 30px; right: 10px; background-color: #34c759; color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 9999;">
+    <div id="sync-status" style="position: fixed; top: 30px; right: 10px; background-color: #34c759; color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 9999; opacity: 0.7;">
         Syncing...
     </div>
     
@@ -297,13 +283,6 @@
                 </div>
                 <div style="display: flex; justify-content: center; gap: 10px;">
                     <button id="sync-send-button" style="background-color: #0277bd;">SAVE MY STATE</button>
-                    <button id="sync-get-button" style="background-color: #0277bd;">FORCE FETCH</button>
-                </div>
-            </div>
-            
-            <div id="sync-status" style="margin-top: 10px; text-align: center;">
-                <div id="sync-indicator">
-                    <span id="sync-text">Sync Status</span>
                     <button id="sync-get-button" style="background-color: #0277bd;">FORCE FETCH</button>
                 </div>
             </div>
@@ -726,8 +705,6 @@
     <script>
     // Board recovery script
     document.addEventListener('DOMContentLoaded', function() {
-        console.log("Board initialization check running");
-        
         // Wait for everything to load
         setTimeout(function() {
             // Define function to check if board has checkers
@@ -764,15 +741,12 @@
                     }
                     
                     boardBackup = clone;
-                    console.log("Board state backed up successfully");
                 }
             }
             
             // Function to restore board from backup
             function restoreBoardFromBackup() {
                 if (boardBackup && Array.isArray(boardBackup)) {
-                    console.log("Restoring board from backup");
-                    
                     // Ensure board exists and is an array
                     if (!window.board || !Array.isArray(window.board)) {
                         window.board = [];
@@ -798,8 +772,6 @@
                         }
                     }
                     
-                    console.log("Board restored from backup");
-                    
                     // Save the restored board to Firebase
                     if (typeof window.saveGameState === 'function') {
                         setTimeout(function() {
@@ -814,19 +786,15 @@
             
             // If board is empty or invalid, try to restore or initialize it
             if (!hasPieces()) {
-                console.log("Board is empty, attempting to restore...");
-                
                 // Try to restore from backup first
                 if (!restoreBoardFromBackup() && typeof window.initializeBoard === 'function') {
                     // If no backup, initialize a new board
-                    console.log("Initializing new board...");
                     window.initializeBoard();
                     
                     // Save to Firebase if we're player 1
                     if (window.playerRole === "player1" && typeof window.saveGameState === 'function') {
                         setTimeout(function() {
                             window.saveGameState();
-                            console.log("Initialized board saved to Firebase");
                         }, 1000);
                     }
                 }
@@ -838,12 +806,9 @@
             // Periodically check the board
             setInterval(function() {
                 if (!hasPieces()) {
-                    console.log("Periodic check found empty board, attempting to restore...");
-                    
                     // Try to restore from backup first
                     if (!restoreBoardFromBackup() && typeof window.initializeBoard === 'function') {
                         // If no backup, initialize a new board
-                        console.log("Initializing new board...");
                         window.initializeBoard();
                     }
                 } else {
@@ -851,10 +816,6 @@
                     backupBoardState();
                 }
             }, 5000); // Check every 5 seconds
-            
-            // CRITICAL: Do not override processFirebaseUpdate as it breaks the client ID system
-            // Instead, just do our backup before updates
-            console.log("Setting up board backup before Firebase updates");
             
             // Create a backup when needed
             if (typeof window.saveGameState === 'function') {
@@ -928,10 +889,8 @@
 
     <!-- AUTO-REFRESH MECHANISM -->
     <script>
-        // This script implements the key behavior of the debug button automatically
+        // This script implements automatic refresh functionality
         document.addEventListener('DOMContentLoaded', function() {
-            console.log("Auto-refresh mechanism initialized");
-            
             // Variables to track last update
             let lastRefreshTime = 0;
             let refreshCount = 0;
@@ -952,7 +911,7 @@
                 }
             }
             
-            // Function to perform auto-refresh (mimics debug button behavior)
+            // Function to perform auto-refresh
             function performAutoRefresh() {
                 try {
                     const currentTime = Date.now();
@@ -963,7 +922,6 @@
                     refreshCount++;
                     lastRefreshTime = currentTime;
                     
-                    console.log(`AUTO-REFRESH #${refreshCount}: Running critical refresh operations`);
                     updateSyncStatus(`Sync #${refreshCount}`, '#34c759');
                     
                     // Check if board has checkers
@@ -979,11 +937,10 @@
                     
                     // If board is empty, force initialization
                     if (!hasCheckers && typeof window.initializeBoard === 'function') {
-                        console.log("AUTO-REFRESH: Board is empty, initializing...");
                         window.initializeBoard();
                     }
                     
-                    // Critical: Force the game to start if both players have joined
+                    // Force the game to start if both players have joined
                     if (typeof window.checkAndStartGame === 'function') {
                         window.checkAndStartGame();
                     }
@@ -995,7 +952,6 @@
                     
                     // Fetch latest state from server
                     if (typeof window.fetchLatestState === 'function') {
-                        console.log("AUTO-REFRESH: Fetching latest state");
                         window.fetchLatestState();
                     }
                     
@@ -1006,11 +962,10 @@
                     
                     // Occasionally save state if we're in a game
                     if (refreshCount % 4 === 0 && window.gameId && typeof window.saveGameState === 'function') {
-                        console.log("AUTO-REFRESH: Saving current state for reliability");
                         window.saveGameState();
                     }
                 } catch (error) {
-                    console.error("AUTO-REFRESH: Error during refresh", error);
+                    console.error("Error during refresh:", error);
                     updateSyncStatus("Sync Error", '#ff3b30');
                 }
             }
