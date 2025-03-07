@@ -1,5 +1,6 @@
 // game-logic.js (Part 1) - Complete implementation
 // This file handles game mechanics, moves, and rules
+// Last synchronized: Version check - March 7, 2025
 
 // Variables to prevent rapid actions
 let isRolling = false;
