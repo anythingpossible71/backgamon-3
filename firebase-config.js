@@ -1,4 +1,4 @@
-// EMERGENCY FIX - VERSION 7.0.0 - BYPASSING FIREBASE
+// FINAL FIX VERSION 8.0.0 - AUTO-REFRESH SOLUTION
 // firebase-config.js
 
 // Firebase configuration
@@ -18,14 +18,29 @@ if (firebase.apps.length === 0) {
   console.log("Firebase initialized");
 }
 
-// ENTIRELY NEW APPROACH - LOCAL STORAGE FIRST, FIREBASE SECOND
-console.log("===== EMERGENCY FIX - LOCAL STORAGE FIRST =====");
+// FINAL APPROACH - Use Firebase with aggressive forced refresh
+console.log("===== FINAL FIX: AUTO-REFRESH SOLUTION =====");
 
 // Global variables
 let lastSyncTimestamp = Date.now();
+let lastSuccessfulSync = 0;
 let pollingIntervalId = null;
-let localStoragePrefix = 'bg_';
 let syncInProgress = false;
+
+// Make updateSyncStatus available globally
+window.updateSyncStatus = function(status, color) {
+  const statusEl = document.getElementById('sync-status');
+  if (statusEl) {
+    statusEl.style.backgroundColor = color || '#34c759';
+    statusEl.textContent = status;
+    
+    // Flash effect
+    statusEl.style.opacity = "1";
+    setTimeout(() => {
+      statusEl.style.opacity = "0.7";
+    }, 500);
+  }
+};
 
 // Generate a unique game ID
 function generateUniqueId() {
@@ -44,29 +59,29 @@ function hasBoardData(boardData) {
   return false;
 }
 
-// Get local storage key for this game
-function getLocalStorageKey() {
-  return `${localStoragePrefix}${gameId}`;
-}
-
-// CRITICAL CHANGE: Save game to LOCAL STORAGE FIRST, then to Firebase
+// FINAL VERSION: Save game state - Extremely aggressive
 function saveGameState() {
-  console.log("SAVE: Starting emergency local-first save");
+  console.log("SAVE: Starting AUTO-REFRESH save");
+  window.updateSyncStatus("Saving...", "#ff9500");
   
   try {
     // Ensure we have a game ID
     if (!gameId) {
       console.error("SAVE: No game ID, cannot save state");
+      window.updateSyncStatus("Error: No Game ID", "#ff3b30");
       return;
     }
     
     // Validate board data
     if (!hasBoardData(board)) {
       console.error("SAVE: Board is empty, initializing before save");
+      window.updateSyncStatus("Fixing empty board", "#ff9500");
+      
       if (typeof initializeBoard === 'function') {
         initializeBoard();
       } else {
         console.error("SAVE: Cannot initialize board, save aborted");
+        window.updateSyncStatus("Error: Empty Board", "#ff3b30");
         return;
       }
     }
@@ -83,6 +98,9 @@ function saveGameState() {
         }
       }
     }
+    
+    // Create a random salt for each save to ensure Firebase detects changes
+    const salt = Math.random().toString(36).substring(2, 9);
     
     // Create timestamp for this update
     const timestamp = Date.now();
@@ -102,74 +120,55 @@ function saveGameState() {
       player2Name: player2Name,
       gameStarted: gameStarted,
       timestamp: timestamp,
-      updatedBy: playerRole
+      updatedBy: playerRole,
+      salt: salt // Add random value to ensure Firebase detects the change
     };
     
-    // CRITICAL CHANGE: SAVE TO LOCAL STORAGE FIRST
-    try {
-      const localStorageKey = getLocalStorageKey();
-      localStorage.setItem(localStorageKey, JSON.stringify(gameData));
-      console.log(`LOCAL SAVE: Game saved to localStorage with key ${localStorageKey}`);
-      
-      // Update UI immediately
-      updateGameUI();
-    } catch (localError) {
-      console.error(`LOCAL SAVE ERROR: ${localError.message}`);
-    }
+    console.log(`SAVE: Game data prepared, timestamp: ${timestamp}, dice: ${JSON.stringify(dice)}`);
     
-    // Then save to Firebase in the background
+    // Save to Firebase
     firebase.database().ref('games/' + gameId).set(gameData)
       .then(() => {
-        console.log(`FIREBASE: Game saved successfully at ${timestamp}`);
+        console.log(`SAVE: Game saved successfully at ${timestamp}`);
+        lastSuccessfulSync = timestamp;
+        window.updateSyncStatus("Saved ✓", "#34c759");
+        
+        // Force an immediate UI update and redraw
+        updateGameUI();
+        if (typeof redraw === 'function') {
+          redraw();
+        }
       })
       .catch((error) => {
-        console.error(`FIREBASE ERROR: ${error.message}`);
+        console.error(`SAVE: Error: ${error.message}`);
+        window.updateSyncStatus("Save Error!", "#ff3b30");
       });
   }
   catch (error) {
     console.error(`SAVE: Exception: ${error.message}`);
+    window.updateSyncStatus("Save Exception!", "#ff3b30");
   }
 }
 
-// CRITICAL CHANGE: Load from LOCAL STORAGE FIRST, then from Firebase
+// Load game state
 function loadGameState() {
-  console.log("LOAD: Emergency local-first load");
+  console.log("LOAD: Loading game state");
+  window.updateSyncStatus("Loading...", "#007aff");
   
   if (!gameId) {
     console.error("LOAD: No game ID, cannot load state");
+    window.updateSyncStatus("Error: No Game ID", "#ff3b30");
     return;
   }
   
-  // Try local storage first
-  try {
-    const localStorageKey = getLocalStorageKey();
-    const localData = localStorage.getItem(localStorageKey);
-    
-    if (localData) {
-      const gameData = JSON.parse(localData);
-      console.log("LOCAL LOAD: Found data in localStorage:", gameData);
-      
-      // Process game update from local storage
-      processGameUpdate(gameData, true);
-      
-      // Store the timestamp
-      if (gameData.timestamp) {
-        lastSyncTimestamp = gameData.timestamp;
-      }
-    }
-  } catch (localError) {
-    console.error(`LOCAL LOAD ERROR: ${localError.message}`);
-  }
-  
-  // Then check Firebase for any newer updates
   fetchLatestState();
 }
 
-// CRITICAL CHANGE: Simplified fetch function that favors local data
+// Fetch the latest state from Firebase
 function fetchLatestState() {
-  // Prevent concurrent syncs
+  // Skip if sync in progress
   if (syncInProgress) {
-    console.log("POLL: Sync already in progress, skipping");
+    console.log("POLL: Skip - sync already in progress");
     return;
   }
   
@@ -180,48 +179,40 @@ function fetchLatestState() {
       const gameData = snapshot.val();
       
       if (!gameData) {
-        console.log("POLL: No game data found in Firebase");
+        console.log("POLL: No game data found");
+        window.updateSyncStatus("No Data Found", "#ff9500");
         syncInProgress = false;
         return;
       }
       
-      // Only update if the Firebase data is newer
+      // Process the update regardless of timestamp
+      console.log(`POLL: Data found, timestamp: ${gameData.timestamp}, dice: ${JSON.stringify(gameData.dice)}`);
+      processGameUpdate(gameData);
+      
+      // Update last sync timestamp if newer
       if (gameData.timestamp > lastSyncTimestamp) {
-        console.log(`POLL: Newer data in Firebase (${gameData.timestamp} > ${lastSyncTimestamp})`);
-        
-        // Process the update
-        processGameUpdate(gameData, false);
-        
-        // Update timestamp
         lastSyncTimestamp = gameData.timestamp;
-        
-        // Save to local storage
-        try {
-          const localStorageKey = getLocalStorageKey();
-          localStorage.setItem(localStorageKey, JSON.stringify(gameData));
-          console.log(`LOCAL SAVE: Updated localStorage with newer Firebase data`);
-        } catch (localError) {
-          console.error(`LOCAL SAVE ERROR: ${localError.message}`);
-        }
+        lastSuccessfulSync = Date.now();
+        window.updateSyncStatus("Updated ✓", "#34c759");
       } else {
-        console.log(`POLL: No newer data in Firebase (${gameData.timestamp} <= ${lastSyncTimestamp})`);
+        window.updateSyncStatus("No Updates", "#999999");
       }
       
       syncInProgress = false;
     })
     .catch((error) => {
-      console.error(`POLL ERROR: ${error.message}`);
+      console.error(`POLL: Error: ${error.message}`);
+      window.updateSyncStatus("Fetch Error!", "#ff3b30");
       syncInProgress = false;
     });
 }
 
-// CRITICAL CHANGE: Process updates with improved logic
-function processGameUpdate(gameData, fromLocal) {
-  const source = fromLocal ? "LOCAL STORAGE" : "FIREBASE";
-  console.log(`PROCESS: Update from ${source}, player: ${gameData.updatedBy}, time: ${gameData.timestamp}, dice: ${JSON.stringify(gameData.dice)}`);
+// Process game updates with extreme caution
+function processGameUpdate(gameData) {
+  console.log(`PROCESS: Update from ${gameData.updatedBy}, timestamp: ${gameData.timestamp}`);
   
   try {
-    // Always update player names and game started
+    // Always update player names
     if (gameData.player1Name && gameData.player1Name !== "Player 1") {
       player1Name = gameData.player1Name;
       document.getElementById('player1-name').textContent = player1Name;
@@ -237,62 +228,53 @@ function processGameUpdate(gameData, fromLocal) {
       gameStarted = true;
     }
     
-    // CRITICAL DECISION POINT: When to apply the update
+    // CRITICAL DECISION: When to apply the update
     
     // CASE 1: It's not our turn - always apply updates
-    if (playerRole !== gameData.currentPlayer) {
+    const isMyTurn = playerRole === currentPlayer;
+    if (!isMyTurn) {
       console.log("PROCESS: Not our turn, applying update");
-      
-      // Update all game state
       updateGameStateFromData(gameData);
-    }
+    } 
     // CASE 2: It's our turn but we haven't rolled yet - apply updates
-    else if (playerRole === gameData.currentPlayer && !diceRolled) {
+    else if (isMyTurn && !diceRolled) {
       console.log("PROCESS: Our turn but dice not rolled yet, applying update");
-      
-      // Update all game state
       updateGameStateFromData(gameData);
     }
-    // CASE 3: It's our turn and we've rolled - only update if explicitly from other player and valid
-    else if (playerRole === gameData.currentPlayer && diceRolled) {
+    // CASE 3: It's our turn and we've rolled - be very careful
+    else if (isMyTurn && diceRolled) {
+      // Only update if from another player AND board has changed in an expected way
       if (gameData.updatedBy !== playerRole) {
-        console.log("PROCESS: Incoming update from other player during our turn - checking validity");
+        console.log("PROCESS: Update during our turn from other player - checking carefully");
         
-        // Only accept if the other player has the most up-to-date board state
-        if (gameData.timestamp > lastSyncTimestamp) {
-          console.log("PROCESS: Update is newer, cautiously applying");
+        // Only accept if clearly newer
+        if (gameData.timestamp > lastSyncTimestamp + 5000) { // Must be at least 5 seconds newer
+          console.log("PROCESS: Update is significantly newer, accepting with caution");
           updateGameStateFromData(gameData);
         } else {
-          console.log("PROCESS: Rejecting update - it would overwrite our turn");
+          console.log("PROCESS: Update too close to our last state, preserving our turn");
         }
       } else {
-        console.log("PROCESS: Update is from us during our turn - reinforcing our state");
+        console.log("PROCESS: Own update during our turn - reinforcing our state");
       }
     }
     
-    // Always update UI visibility
+    // Always update game UI and visibility
     updateGameVisibility();
-    
-    // Update turn status
-    const isMyTurn = playerRole === currentPlayer;
-    console.log(`PROCESS: Is my turn? ${isMyTurn}`);
-    
-    // Update UI
     updateGameUI();
     
     // Check for win condition
     if (typeof checkWinCondition === 'function') {
       checkWinCondition();
     }
-    
-    console.log("PROCESS: Update processed successfully");
   }
   catch (error) {
-    console.error(`PROCESS ERROR: ${error.message}`);
+    console.error(`PROCESS: Error: ${error.message}`);
+    window.updateSyncStatus("Process Error!", "#ff3b30");
   }
 }
 
-// Helper to update game state from data
+// Update game state from data
 function updateGameStateFromData(gameData) {
   // Update board if valid
   if (gameData.board && hasBoardData(gameData.board)) {
@@ -322,41 +304,26 @@ function updateGameUI() {
   
   // Force redraw the board
   if (typeof redraw === 'function') redraw();
-  
-  // Update roll button state
-  updateRollButton();
 }
 
 // Update debug info
 function updateDebugInfo() {
   const debugInfo = document.getElementById('debug-info');
   if (debugInfo && debugInfo.style.display === 'block') {
+    const syncAge = Date.now() - lastSuccessfulSync;
+    const syncStatus = syncAge < 10000 ? "GOOD" : syncAge < 30000 ? "STALE" : "OLD";
+    
     debugInfo.innerHTML = `
-      <strong>VERSION:</strong> 7.0.0 EMERGENCY FIX<br>
+      <strong>VERSION:</strong> 8.0.0 AUTO-REFRESH FIX<br>
       <strong>Game ID:</strong> ${gameId}<br>
       <strong>Player Role:</strong> ${playerRole}<br>
       <strong>Current Player:</strong> ${currentPlayer}<br>
       <strong>Dice:</strong> ${JSON.stringify(dice)}<br>
-      <strong>Last Sync Time:</strong> ${new Date(lastSyncTimestamp).toLocaleTimeString()}<br>
+      <strong>Last Sync:</strong> ${new Date(lastSyncTimestamp).toLocaleTimeString()}<br>
+      <strong>Sync Age:</strong> ${Math.floor(syncAge/1000)}s (${syncStatus})<br>
       <strong>Is My Turn:</strong> ${playerRole === currentPlayer}<br>
-      <strong>Storage:</strong> LOCAL FIRST + Firebase Backup<br>
+      <strong>Board Status:</strong> ${hasBoardData(board) ? "HAS PIECES" : "EMPTY!"}<br>
     `;
-  }
-}
-
-// Update roll button state
-function updateRollButton() {
-  const rollButton = document.getElementById('roll-button');
-  if (!rollButton) return;
-  
-  const isMyTurn = playerRole === currentPlayer;
-  
-  if (isMyTurn && !diceRolled) {
-    console.log("BUTTON: Enabling roll button - it's my turn");
-    rollButton.disabled = false;
-  } else {
-    console.log("BUTTON: Disabling roll button - not my turn or already rolled");
-    rollButton.disabled = true;
   }
 }
 
@@ -375,20 +342,20 @@ function updateGameVisibility() {
   }
 }
 
-// Start polling
+// Start polling for game state
 function startPolling() {
-  console.log("POLL: Starting emergency polling");
+  console.log("POLL: Starting AUTO-REFRESH polling");
   
   // Stop any existing polling
   stopPolling();
   
-  // Start new polling interval - MUCH faster polling (500ms)
-  pollingIntervalId = setInterval(fetchLatestState, 500);
+  // Start new polling interval
+  pollingIntervalId = setInterval(fetchLatestState, 2000); // Check every 2 seconds
   
-  console.log("POLL: Emergency polling started");
+  console.log("POLL: AUTO-REFRESH polling started");
 }
 
-// Stop polling
+// Stop polling for game state
 function stopPolling() {
   if (pollingIntervalId) {
     clearInterval(pollingIntervalId);
@@ -397,17 +364,14 @@ function stopPolling() {
   }
 }
 
-// Listen for game changes (starts polling)
+// Listen for game changes
 function listenForGameChanges(gameId) {
-  console.log(`POLL: Setting up emergency polling for game ID: ${gameId}`);
+  console.log(`POLL: Setting up polling for game ID: ${gameId}`);
   
   if (!gameId) {
     console.error("POLL: No game ID provided");
     return;
   }
-  
-  // Set local storage prefix with game ID
-  localStoragePrefix = `bg_${gameId}_`;
   
   // Start polling
   startPolling();
@@ -416,6 +380,7 @@ function listenForGameChanges(gameId) {
 // Force game to start
 function forceStartGame() {
   console.log("FORCE: Game start initiated");
+  window.updateSyncStatus("Starting Game", "#007aff");
   
   gameStarted = true;
   saveGameState();
@@ -423,10 +388,10 @@ function forceStartGame() {
 
 // Legacy function for compatibility
 function processFirebaseUpdate(gameData) {
-  processGameUpdate(gameData, false);
+  processGameUpdate(gameData);
 }
 
-// Export functions to window object
+// Export functions
 window.generateUniqueId = generateUniqueId;
 window.saveGameState = saveGameState;
 window.loadGameState = loadGameState;

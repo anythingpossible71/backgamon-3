@@ -195,7 +195,12 @@
 <body>
     <!-- Version Banner - Always Visible -->
     <div id="version-banner">
-        BACKGAMMON VERSION 7.0.0 - EMERGENCY NO-CACHE FIX
+        BACKGAMMON VERSION 8.0.0 - AUTO-REFRESH FIX
+    </div>
+    
+    <!-- Auto-refresh status indicator -->
+    <div id="sync-status" style="position: fixed; top: 30px; right: 10px; background-color: #34c759; color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 9999;">
+        Syncing...
     </div>
     
     <!-- Anti-caching script -->
@@ -204,7 +209,7 @@
         console.log("CACHE BUSTER: Forcing reload if cached version");
         
         // Store the current version in localStorage
-        const CURRENT_VERSION = "7.0.0";
+        const CURRENT_VERSION = "8.0.0";
         const storedVersion = localStorage.getItem('backgammon_version');
         
         if (storedVersion !== CURRENT_VERSION) {
@@ -976,6 +981,111 @@
         
         console.log("Performance improvements loaded");
     });
+    </script>
+
+    <!-- AUTO-REFRESH MECHANISM -->
+    <script>
+        // This script implements the key behavior of the debug button automatically
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("Auto-refresh mechanism initialized");
+            
+            // Variables to track last update
+            let lastRefreshTime = 0;
+            let refreshCount = 0;
+            const REFRESH_INTERVAL = 3000; // 3 seconds between auto-refreshes
+            
+            // Function to update sync status indicator
+            function updateSyncStatus(status, color) {
+                const statusEl = document.getElementById('sync-status');
+                if (statusEl) {
+                    statusEl.style.backgroundColor = color;
+                    statusEl.textContent = status;
+                    
+                    // Flash effect
+                    statusEl.style.opacity = "1";
+                    setTimeout(() => {
+                        statusEl.style.opacity = "0.7";
+                    }, 500);
+                }
+            }
+            
+            // Function to perform auto-refresh (mimics debug button behavior)
+            function performAutoRefresh() {
+                try {
+                    const currentTime = Date.now();
+                    if (currentTime - lastRefreshTime < REFRESH_INTERVAL) {
+                        return; // Don't refresh too frequently
+                    }
+                    
+                    refreshCount++;
+                    lastRefreshTime = currentTime;
+                    
+                    console.log(`AUTO-REFRESH #${refreshCount}: Running critical refresh operations`);
+                    updateSyncStatus(`Sync #${refreshCount}`, '#34c759');
+                    
+                    // Check if board has checkers
+                    let hasCheckers = false;
+                    if (window.board && Array.isArray(window.board)) {
+                        for (let i = 0; i < window.board.length; i++) {
+                            if (window.board[i] && window.board[i].length > 0) {
+                                hasCheckers = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // If board is empty, force initialization
+                    if (!hasCheckers && typeof window.initializeBoard === 'function') {
+                        console.log("AUTO-REFRESH: Board is empty, initializing...");
+                        window.initializeBoard();
+                    }
+                    
+                    // Critical: Force the game to start if both players have joined
+                    if (typeof window.checkAndStartGame === 'function') {
+                        window.checkAndStartGame();
+                    }
+                    
+                    // Force UI updates
+                    if (typeof window.updatePlayerInfo === 'function') window.updatePlayerInfo();
+                    if (typeof window.updateDiceDisplay === 'function') window.updateDiceDisplay();
+                    if (typeof window.updateGameStatus === 'function') window.updateGameStatus();
+                    
+                    // Fetch latest state from server
+                    if (typeof window.fetchLatestState === 'function') {
+                        console.log("AUTO-REFRESH: Fetching latest state");
+                        window.fetchLatestState();
+                    }
+                    
+                    // Force a redraw
+                    if (typeof window.redraw === 'function') {
+                        window.redraw();
+                    }
+                    
+                    // Occasionally save state if we're in a game
+                    if (refreshCount % 4 === 0 && window.gameId && typeof window.saveGameState === 'function') {
+                        console.log("AUTO-REFRESH: Saving current state for reliability");
+                        window.saveGameState();
+                    }
+                } catch (error) {
+                    console.error("AUTO-REFRESH: Error during refresh", error);
+                    updateSyncStatus("Sync Error", '#ff3b30');
+                }
+            }
+            
+            // Run initial refresh after a delay to let everything initialize
+            setTimeout(function() {
+                performAutoRefresh();
+                
+                // Set up recurring refresh
+                setInterval(performAutoRefresh, REFRESH_INTERVAL);
+            }, 5000);
+            
+            // Also run refresh when window regains focus (user returns to tab)
+            window.addEventListener('focus', performAutoRefresh);
+            
+            // Export function for manual use
+            window.manualRefresh = performAutoRefresh;
+        });
     </script>
 </body>
 </html>

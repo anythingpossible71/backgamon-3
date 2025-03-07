@@ -539,6 +539,11 @@ function rollDice() {
     
     diceRolled = true;
     
+    // Display a visual indicator for the roll
+    if (typeof window.updateSyncStatus === 'function') {
+        window.updateSyncStatus(`${currentPlayer} rolled ${dice.join(', ')}`, '#ff9500');
+    }
+    
     // Update game status
     gameStatus = currentPlayer === 'player1' ? 
         player1Name + " rolled " + dice.join(', ') + "!" :
@@ -552,27 +557,49 @@ function rollDice() {
         updateGameStatus();
     }
     
-    // CRITICAL FIX: THREE-STEP SAVE PROCESS for dice rolls
-    // Step 1: Immediate save
-    console.log("DICE SYNC: Immediate save after roll");
+    // Force a board redraw
+    if (typeof redraw === 'function') {
+        redraw();
+    }
+    
+    // CRITICAL FIX: Save FIVE TIMES with increasing delays for maximum reliability
+    // Save 1: Immediate
+    console.log("DICE SYNC 1/5: Immediate save");
     saveGameState();
     
-    // Step 2: Secondary save after short delay
+    // Save 2: After 300ms
     setTimeout(() => {
-        console.log("DICE SYNC: Second save after roll");
+        console.log("DICE SYNC 2/5: 300ms save");
+        saveGameState();
+    }, 300);
+    
+    // Save 3: After 800ms
+    setTimeout(() => {
+        console.log("DICE SYNC 3/5: 800ms save");
         saveGameState();
         
-        // Update game UI again
+        // Update UI again
         if (typeof updateDiceDisplay === 'function') {
             updateDiceDisplay();
         }
-    }, 500);
+    }, 800);
     
-    // Step 3: Tertiary save after longer delay
+    // Save 4: After 1500ms
     setTimeout(() => {
-        console.log("DICE SYNC: Third save after roll");
+        console.log("DICE SYNC 4/5: 1500ms save");
         saveGameState();
     }, 1500);
+    
+    // Save 5: After 3000ms
+    setTimeout(() => {
+        console.log("DICE SYNC 5/5: 3000ms save");
+        saveGameState();
+        
+        // Force a redraw again
+        if (typeof redraw === 'function') {
+            redraw();
+        }
+    }, 3000);
     
     // Check if player has legal moves
     if (!hasLegalMoves()) {
