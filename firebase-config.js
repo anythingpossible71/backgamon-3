@@ -91,190 +91,100 @@ function prepareGameDataForSaving(gameData) {
 
 // Save game state to Firebase with throttling
 function saveGameState() {
-    const now = Date.now();
-    
-    // Always save if forcePlayerOneUpdate is true
-    if (window.forcePlayerOneUpdate !== true) {
-        // Check if we're trying to save too frequently
-        if (now - lastUpdateTime < SAVE_THROTTLE) {
-            console.log("Throttling Firebase update (too frequent)");
-            return;
-        }
-        
-        // Skip saving if already updating from Firebase
-        if (isCurrentlyUpdating) {
-            console.log("Currently updating from Firebase, save skipped");
-            return;
-        }
-    } else {
-        console.log("CRITICAL: Force update flag set, bypassing all throttling");
-    }
-    
-    lastUpdateTime = now;
-    
-    if (!gameId) {
-        console.log("No gameId found, cannot save state");
-        return;
-    }
-    
     try {
-        console.log("Saving game state for game:", gameId);
+        // Critical log to help with debugging
+        console.log("SAVE STATE: Saving game state to Firebase", {
+            forceUpdate: window.forcePlayerOneUpdate === true,
+            debugClicked: window.debugButtonClicked === true,
+            gameId: window.gameId,
+            playerRole: window.playerRole
+        });
         
-        // Increment version number for this update
-        gameStateVersion++;
+        // Don't save if Firebase isn't initialized or no game ID
+        if (!firebase.database || !window.gameId) {
+            console.error("SAVE ERROR: Firebase not initialized or no game ID");
+            return false;
+        }
         
-        // Check if both players have joined
-        const bothPlayersJoined = player1Name !== "Player 1" && player2Name !== "Player 2";
-        
-        // Check if this is a forced update from player 2 joining
-        const isForceUpdate = window.forcePlayerOneUpdate === true;
-        const isMoveCompleted = window.moveCompleted === true;
-        const isDiceRolled = window.diceRolled === true;
-        
-        // Debug the board state before saving
-        console.log("Board state before saving:", JSON.stringify(board));
-        console.log("Dice before saving:", JSON.stringify(dice));
-        
-        // Create a deep copy of the board to avoid reference issues
+        // Create deep copies of all game state variables to avoid reference issues
         const boardCopy = [];
-        if (board && Array.isArray(board)) {
-            for (let i = 0; i < board.length; i++) {
+        if (Array.isArray(window.board)) {
+            for (let i = 0; i < window.board.length; i++) {
                 boardCopy[i] = [];
-                if (board[i] && Array.isArray(board[i])) {
-                    for (let j = 0; j < board[i].length; j++) {
-                        if (board[i][j] && board[i][j].color) {
-                            boardCopy[i].push({ color: board[i][j].color });
+                if (Array.isArray(window.board[i])) {
+                    for (let j = 0; j < window.board[i].length; j++) {
+                        if (window.board[i][j] && window.board[i][j].color) {
+                            boardCopy[i][j] = { color: window.board[i][j].color };
                         }
                     }
                 }
             }
         }
         
-        // Create deep copies of other arrays
-        const whiteBarCopy = [];
-        if (whiteBar && Array.isArray(whiteBar)) {
-            for (let i = 0; i < whiteBar.length; i++) {
-                whiteBarCopy.push({ color: 'white' });
-            }
-        }
+        // Deep copy other arrays
+        const whiteBarCopy = Array.isArray(window.whiteBar) ? 
+            window.whiteBar.map(checker => ({ color: checker.color })) : [];
+            
+        const blackBarCopy = Array.isArray(window.blackBar) ? 
+            window.blackBar.map(checker => ({ color: checker.color })) : [];
+            
+        const whiteBearOffCopy = Array.isArray(window.whiteBearOff) ? 
+            window.whiteBearOff.map(checker => ({ color: checker.color })) : [];
+            
+        const blackBearOffCopy = Array.isArray(window.blackBearOff) ? 
+            window.blackBearOff.map(checker => ({ color: checker.color })) : [];
+            
+        const diceCopy = Array.isArray(window.dice) ? [...window.dice] : [];
         
-        const blackBarCopy = [];
-        if (blackBar && Array.isArray(blackBar)) {
-            for (let i = 0; i < blackBar.length; i++) {
-                blackBarCopy.push({ color: 'black' });
-            }
-        }
-        
-        const whiteBearOffCopy = [];
-        if (whiteBearOff && Array.isArray(whiteBearOff)) {
-            for (let i = 0; i < whiteBearOff.length; i++) {
-                whiteBearOffCopy.push({ color: 'white' });
-            }
-        }
-        
-        const blackBearOffCopy = [];
-        if (blackBearOff && Array.isArray(blackBearOff)) {
-            for (let i = 0; i < blackBearOff.length; i++) {
-                blackBearOffCopy.push({ color: 'black' });
-            }
-        }
-        
-        // Make a copy of dice
-        const diceCopy = dice ? [...dice] : [];
-        
+        // Prepare game data with deep copies
         const gameData = {
             board: boardCopy,
             whiteBar: whiteBarCopy,
             blackBar: blackBarCopy,
             whiteBearOff: whiteBearOffCopy,
             blackBearOff: blackBearOffCopy,
-            currentPlayer: currentPlayer,
+            currentPlayer: window.currentPlayer,
             dice: diceCopy,
-            diceRolled: diceRolled,
-            gameStatus: gameStatus,
-            player1Name: player1Name,
-            player2Name: player2Name,
-            gameStarted: true, // Always set as started when saving
-            forceUpdate: isForceUpdate, // Special flag for player 1
-            moveCompleted: isMoveCompleted, // Flag for move completion
-            diceRolled: isDiceRolled, // Flag for dice roll
-            version: gameStateVersion,
+            diceRolled: window.diceRolled === true,
+            gameStatus: window.gameStatus,
+            player1Name: window.player1Name,
+            player2Name: window.player2Name,
+            gameStarted: window.gameStarted === true,
+            lastMoveBy: window.playerRole,
             timestamp: firebase.database.ServerValue.TIMESTAMP,
-            lastMoveBy: playerRole, // Add who made the last move
-            debugButtonClicked: true // Add flag to indicate debug button was clicked
+            gameStateVersion: window.gameStateVersion ? window.gameStateVersion + 1 : 1,
+            forceUpdate: window.forcePlayerOneUpdate === true,
+            debugButtonClicked: window.debugButtonClicked === true
         };
         
-        // Debug the game data
-        console.log("Game data prepared for Firebase:", JSON.stringify(gameData.board));
-        console.log("Dice data prepared for Firebase:", JSON.stringify(gameData.dice));
+        // Update local version counter
+        window.gameStateVersion = gameData.gameStateVersion;
         
-        // Update local timestamp expectation
-        localGameTimestamp = now;
-        
-        console.log("Saving data to Firebase");
-        
-        // Use set instead of update to ensure complete replacement
-        firebase.database().ref('games/' + gameId).set(gameData)
+        // Save to Firebase with error handling
+        return firebase.database().ref('games/' + window.gameId).update(gameData)
             .then(() => {
-                console.log("Game state saved successfully, version:", gameStateVersion);
+                console.log("SAVE SUCCESS: Game state saved to Firebase", { version: gameData.gameStateVersion });
                 
-                // Clear the flags AFTER successful save
-                window.forcePlayerOneUpdate = false;
-                window.moveCompleted = false;
-                window.diceRolled = false;
-                
-                // Force a redraw after saving
-                if (typeof redrawBoard === 'function') {
-                    redrawBoard();
+                // Clear flags ONLY after successful save
+                if (window.forcePlayerOneUpdate === true) {
+                    console.log("SAVE: Clearing force update flag");
+                    window.forcePlayerOneUpdate = false;
                 }
                 
-                // Update UI directly
-                if (typeof updateUIDirectly === 'function') {
-                    updateUIDirectly();
+                if (window.debugButtonClicked === true) {
+                    console.log("SAVE: Clearing debug button flag");
+                    window.debugButtonClicked = false;
                 }
                 
-                // Verify the save was successful
-                setTimeout(() => {
-                    firebase.database().ref('games/' + gameId).once('value')
-                        .then((snapshot) => {
-                            const serverData = snapshot.val();
-                            if (!serverData || !serverData.board) {
-                                console.error("Failed to save game state to server");
-                                
-                                // Try again
-                                window.forcePlayerOneUpdate = true;
-                                saveGameState();
-                                return;
-                            }
-                            
-                            console.log("Server board state verified");
-                        })
-                        .catch((error) => {
-                            console.error("Error verifying game state save:", error);
-                        });
-                }, 500);
+                return true;
             })
-            .catch((error) => {
-                console.error("Error saving game state:", error);
-                // Decrement version on failure
-                gameStateVersion--;
-                
-                // Try again after a delay
-                setTimeout(() => {
-                    window.forcePlayerOneUpdate = true;
-                    saveGameState();
-                }, 1000);
+            .catch(error => {
+                console.error("SAVE ERROR: Failed to save game state", error);
+                return false;
             });
     } catch (error) {
-        console.error("Error preparing game state for saving:", error);
-        // Decrement version on failure
-        gameStateVersion--;
-        
-        // Try again after a delay
-        setTimeout(() => {
-            window.forcePlayerOneUpdate = true;
-            saveGameState();
-        }, 1000);
+        console.error("SAVE ERROR: Exception in saveGameState", error);
+        return false;
     }
 }
 
@@ -392,253 +302,106 @@ async function processUpdateQueue() {
 
 // Process a Firebase update safely with lock prevention
 function processFirebaseUpdate(gameData) {
-    // If already updating, queue this update
-    if (isCurrentlyUpdating) {
-        console.log("Already processing an update, queueing this one");
-        pendingUpdate = gameData;
-        return;
-    }
-    
-    // Set updating flag
-    isCurrentlyUpdating = true;
-    
-    // Set a safety timeout to release the lock if update takes too long
-    const safetyTimeout = setTimeout(() => {
-        console.warn("Firebase update took too long, releasing lock");
-        isCurrentlyUpdating = false;
-        
-        // Process pending update if one exists
-        if (pendingUpdate) {
-            const tempUpdate = pendingUpdate;
-            pendingUpdate = null;
-            setTimeout(() => {
-                processFirebaseUpdate(tempUpdate);
-            }, 100);
-        }
-    }, UPDATE_TIMEOUT);
-    
     try {
-        console.log("Processing Firebase update", gameData);
+        // Implement a locking mechanism to prevent concurrent updates
+        if (window.isProcessingUpdate) {
+            console.log("UPDATE: Already processing an update, queueing this one");
+            window.pendingUpdate = gameData;
+            return;
+        }
         
-        // Check for special flags
+        window.isProcessingUpdate = true;
+        
+        // Set a safety timeout to release the lock if something goes wrong
+        const safetyTimeout = setTimeout(() => {
+            console.warn("UPDATE WARNING: Safety timeout reached, releasing lock");
+            window.isProcessingUpdate = false;
+            
+            // Process any pending updates
+            if (window.pendingUpdate) {
+                const pendingData = window.pendingUpdate;
+                window.pendingUpdate = null;
+                processFirebaseUpdate(pendingData);
+            }
+        }, 5000);
+        
+        // Log update details
+        console.log("UPDATE: Processing Firebase update", {
+            fromOtherPlayer: gameData.lastMoveBy && gameData.lastMoveBy !== window.playerRole,
+            forceUpdate: gameData.forceUpdate === true,
+            debugButtonClicked: gameData.debugButtonClicked === true,
+            version: gameData.gameStateVersion
+        });
+        
+        // Update player names and game status immediately
+        if (gameData.player1Name) window.player1Name = gameData.player1Name;
+        if (gameData.player2Name) window.player2Name = gameData.player2Name;
+        if (gameData.gameStatus) window.gameStatus = gameData.gameStatus;
+        if (typeof gameData.gameStarted !== 'undefined') window.gameStarted = gameData.gameStarted;
+        
+        // Update UI elements that don't depend on the board
+        if (typeof updatePlayerInfo === 'function') updatePlayerInfo();
+        if (typeof updateGameStatus === 'function') updateGameStatus();
+        
+        // Check if this is an update from another player or a force update
+        const isFromOtherPlayer = gameData.lastMoveBy && gameData.lastMoveBy !== window.playerRole;
         const isForceUpdate = gameData.forceUpdate === true;
-        const isMoveCompleted = gameData.moveCompleted === true;
-        const isDiceRolled = gameData.diceRolled === true;
         const isDebugButtonClicked = gameData.debugButtonClicked === true;
         
-        // Check if this update is from the other player
-        const isFromOtherPlayer = gameData.lastMoveBy && gameData.lastMoveBy !== playerRole;
-        
-        console.log("Update from other player:", isFromOtherPlayer, 
-                   "Force update:", isForceUpdate, 
-                   "Move completed:", isMoveCompleted,
-                   "Dice rolled:", isDiceRolled,
-                   "Debug button clicked:", isDebugButtonClicked);
-        
-        // Update player names and trigger UI updates immediately
-        let playersChanged = false;
-        
-        if (gameData.player1Name && gameData.player1Name !== player1Name) {
-            player1Name = gameData.player1Name;
-            const p1NameEl = document.getElementById('player1-name');
-            if (p1NameEl) p1NameEl.textContent = player1Name;
-            playersChanged = true;
-        }
-        
-        if (gameData.player2Name && gameData.player2Name !== player2Name) {
-            player2Name = gameData.player2Name;
-            const p2NameEl = document.getElementById('player2-name');
-            if (p2NameEl) p2NameEl.textContent = player2Name;
-            playersChanged = true;
-        }
-        
-        // If players changed or force update, update game state
-        if (playersChanged || isForceUpdate || isDebugButtonClicked) {
-            // Check if both players have joined
-            if ((player1Name !== "Player 1" && player2Name !== "Player 2") || isForceUpdate || isDebugButtonClicked) {
-                console.log("Both players joined or force update received, updating UI");
-                
-                // Set game as started
-                gameStarted = true;
-                
-                // Only hide waiting message and show game controls if both players have joined
-                if (player1Name !== "Player 1" && player2Name !== "Player 2") {
-                    console.log("Both players have joined, showing game controls");
-                    
-                    const waitingMessage = document.getElementById('waiting-message');
-                    const playerJoin = document.getElementById('player-join');
-                    const gameControls = document.getElementById('game-controls');
-                    
-                    if (waitingMessage) waitingMessage.classList.add('hidden');
-                    if (playerJoin) playerJoin.classList.add('hidden');
-                    if (gameControls) gameControls.classList.remove('hidden');
-                } else if (playerRole === "player1" && player2Name === "Player 2") {
-                    // Player 1 is waiting for player 2
-                    console.log("Player 1 is waiting for player 2 to join");
-                    
-                    const waitingMessage = document.getElementById('waiting-message');
-                    const playerJoin = document.getElementById('player-join');
-                    const nameEntry = document.getElementById('name-entry');
-                    const gameControls = document.getElementById('game-controls');
-                    
-                    if (waitingMessage) waitingMessage.classList.remove('hidden');
-                    if (playerJoin) playerJoin.classList.remove('hidden');
-                    if (nameEntry) nameEntry.classList.add('hidden');
-                    if (gameControls) gameControls.classList.add('hidden');
-                }
-                
-                // Update game status
-                gameStatus = gameData.gameStatus || (player1Name + "'s turn to roll");
-                const gameStatusEl = document.getElementById('game-status');
-                if (gameStatusEl) gameStatusEl.textContent = gameStatus;
-                
-                // Enable roll button for player 1
-                if (playerRole === 'player1' && currentPlayer === 'player1') {
-                    const rollButton = document.getElementById('roll-button');
-                    if (rollButton) rollButton.disabled = false;
-                }
-            }
-        }
-        
-        // Always update game state variables to ensure synchronization
-        // Pay special attention to board updates from other players
-        if (gameData.board) {
-            console.log("Updating board from Firebase, from other player:", isFromOtherPlayer);
-            console.log("Board data received:", JSON.stringify(gameData.board));
-            
-            // Deep copy the board to avoid reference issues
-            board = [];
-            for (let i = 0; i < 24; i++) {
-                board[i] = [];
-                if (gameData.board[i] && gameData.board[i].length > 0) {
-                    for (let j = 0; j < gameData.board[i].length; j++) {
-                        if (gameData.board[i][j] && gameData.board[i][j].color) {
-                            board[i].push({ color: gameData.board[i][j].color });
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Update other game state variables
-        if (gameData.whiteBar) {
-            whiteBar = [];
-            for (let i = 0; i < gameData.whiteBar.length; i++) {
-                whiteBar.push({ color: 'white' });
-            }
-        } else {
-            whiteBar = [];
-        }
-        
-        if (gameData.blackBar) {
-            blackBar = [];
-            for (let i = 0; i < gameData.blackBar.length; i++) {
-                blackBar.push({ color: 'black' });
-            }
-        } else {
-            blackBar = [];
-        }
-        
-        if (gameData.whiteBearOff) {
-            whiteBearOff = [];
-            for (let i = 0; i < gameData.whiteBearOff.length; i++) {
-                whiteBearOff.push({ color: 'white' });
-            }
-        } else {
-            whiteBearOff = [];
-        }
-        
-        if (gameData.blackBearOff) {
-            blackBearOff = [];
-            for (let i = 0; i < gameData.blackBearOff.length; i++) {
-                blackBearOff.push({ color: 'black' });
-            }
-        } else {
-            blackBearOff = [];
-        }
-        
-        // Special handling for dice updates
-        if (gameData.dice) {
-            console.log("Updating dice from Firebase:", JSON.stringify(gameData.dice));
-            dice = Array.isArray(gameData.dice) ? [...gameData.dice] : [];
-            
-            // Update dice display
-            const dice1El = document.getElementById('dice1');
-            const dice2El = document.getElementById('dice2');
-            
-            if (dice1El && dice.length > 0) {
-                dice1El.textContent = dice[0];
-            }
-            
-            if (dice2El && dice.length > 1) {
-                dice2El.textContent = dice[1];
-            }
-        }
-        
-        if (gameData.diceRolled !== undefined) {
-            console.log("Updating diceRolled from Firebase:", gameData.diceRolled);
-            diceRolled = gameData.diceRolled;
-        }
-        
-        if (gameData.currentPlayer) {
-            console.log("Updating currentPlayer from Firebase:", gameData.currentPlayer);
-            currentPlayer = gameData.currentPlayer;
-        }
-        
-        if (gameData.gameStatus) {
-            console.log("Updating gameStatus from Firebase:", gameData.gameStatus);
-            gameStatus = gameData.gameStatus;
-            
-            // Update game status display
-            const gameStatusEl = document.getElementById('game-status');
-            if (gameStatusEl) gameStatusEl.textContent = gameStatus;
-        }
-        
-        if (gameData.gameStarted) gameStarted = gameData.gameStarted;
+        // Always update these game state variables
+        if (Array.isArray(gameData.board)) window.board = gameData.board;
+        if (Array.isArray(gameData.whiteBar)) window.whiteBar = gameData.whiteBar;
+        if (Array.isArray(gameData.blackBar)) window.blackBar = gameData.blackBar;
+        if (Array.isArray(gameData.whiteBearOff)) window.whiteBearOff = gameData.whiteBearOff;
+        if (Array.isArray(gameData.blackBearOff)) window.blackBearOff = gameData.blackBearOff;
+        if (typeof gameData.currentPlayer !== 'undefined') window.currentPlayer = gameData.currentPlayer;
+        if (Array.isArray(gameData.dice)) window.dice = gameData.dice;
+        if (typeof gameData.diceRolled !== 'undefined') window.diceRolled = gameData.diceRolled;
         
         // Update UI directly
-        if (typeof updateUIDirectly === 'function') {
-            updateUIDirectly();
+        if (typeof updateDiceDisplay === 'function') updateDiceDisplay();
+        if (typeof updatePlayerInfo === 'function') updatePlayerInfo();
+        
+        // Determine if we need to redraw the board
+        let shouldRedrawBoard = isFromOtherPlayer || isForceUpdate || isDebugButtonClicked;
+        
+        // Always redraw if dice have been rolled
+        if (Array.isArray(gameData.dice) && gameData.dice.length > 0) {
+            shouldRedrawBoard = true;
         }
         
-        // If this was a move from the other player or dice were rolled or debug button was clicked, redraw the board
-        if ((isFromOtherPlayer || isMoveCompleted || isDiceRolled || isDebugButtonClicked) && typeof redrawBoard === 'function') {
-            console.log("Redrawing board after update");
+        // Redraw the board if needed
+        if (shouldRedrawBoard && typeof redrawBoard === 'function') {
+            console.log("UPDATE: Redrawing board due to update");
             redrawBoard();
+        }
+        
+        // Check if both players have joined and start the game if needed
+        if (gameData.player1Name && gameData.player1Name !== "Player 1" && 
+            gameData.player2Name && gameData.player2Name !== "Player 2") {
             
-            // Force a second redraw after a short delay to ensure it's visible
-            setTimeout(() => {
-                redrawBoard();
-                console.log("Forced second redraw after update");
-                
-                // Update UI again
-                if (typeof updateUIDirectly === 'function') {
-                    updateUIDirectly();
-                }
-                
-                // If this was a debug button click, simulate a debug button click on this side too
-                if (isDebugButtonClicked && typeof window.simulateDebugButtonClick === 'function') {
-                    console.log("Simulating debug button click in response to remote debug button click");
-                    window.simulateDebugButtonClick();
-                }
-            }, 500);
+            if (typeof checkAndStartGame === 'function') {
+                console.log("UPDATE: Both players have joined, checking if game can start");
+                checkAndStartGame();
+            }
         }
         
-    } catch (error) {
-        console.error("Error updating game from Firebase:", error);
-    } finally {
-        // Always clear timeout and release lock
+        // Clear the safety timeout and release the lock
         clearTimeout(safetyTimeout);
-        isCurrentlyUpdating = false;
+        window.isProcessingUpdate = false;
         
-        // Process pending update if one exists
-        if (pendingUpdate) {
-            const tempUpdate = pendingUpdate;
-            pendingUpdate = null;
-            setTimeout(() => {
-                processFirebaseUpdate(tempUpdate);
-            }, 100);
+        // Process any pending updates
+        if (window.pendingUpdate) {
+            const pendingData = window.pendingUpdate;
+            window.pendingUpdate = null;
+            processFirebaseUpdate(pendingData);
         }
+        
+        return true;
+    } catch (error) {
+        console.error("UPDATE ERROR: Exception in processFirebaseUpdate", error);
+        window.isProcessingUpdate = false;
+        return false;
     }
 }
 

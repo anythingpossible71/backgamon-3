@@ -225,6 +225,7 @@
             
             <div style="margin-top: 10px; text-align: center;">
                 <button id="debug-button" style="background-color: #666;">Debug Info</button>
+                <button id="force-sync-button" style="background-color: #ff5722; margin-left: 10px;">Force Sync</button>
                 <div id="debug-info"></div>
             </div>
         </div>
@@ -669,6 +670,34 @@
             }
         });
         
+        // BREAKTHROUGH: Add Force Sync button handler
+        document.getElementById('force-sync-button').addEventListener('click', function() {
+            console.log("Force Sync button clicked");
+            
+            // Show visual feedback
+            const button = this;
+            const originalText = button.textContent;
+            button.textContent = 'Syncing...';
+            button.style.backgroundColor = '#999';
+            
+            // Call our new forceSyncNow function if available
+            if (typeof window.forceSyncNow === 'function') {
+                window.forceSyncNow();
+            } else if (typeof window.simulateDebugButtonClick === 'function') {
+                window.simulateDebugButtonClick();
+            } else if (typeof window.saveGameState === 'function') {
+                window.forcePlayerOneUpdate = true;
+                window.debugButtonClicked = true;
+                window.saveGameState();
+            }
+            
+            // Reset button after a delay
+            setTimeout(function() {
+                button.textContent = originalText;
+                button.style.backgroundColor = '#ff5722';
+            }, 2000);
+        });
+        
         // Initialize on page load
         window.onload = function() {
             debugLog("Window loaded, initializing game...");
@@ -883,23 +912,13 @@
             };
         }
         
-        // Throttle saveGameState to prevent excessive Firebase updates
+        // BREAKTHROUGH: Completely remove throttling for saveGameState
+        // Our new approach handles throttling internally with verification
         if (typeof window.saveGameState === 'function' && !window.originalSaveGameState) {
-            console.log("Adding saveGameState throttling");
+            console.log("BREAKTHROUGH: Removing saveGameState throttling to allow critical updates");
             
-            window.originalSaveGameState = window.saveGameState;
-            
-            window.saveGameState = function() {
-                const now = Date.now();
-                // Only throttle if forcePlayerOneUpdate is not set
-                if (now - lastSaveTime < THROTTLE_INTERVAL && window.forcePlayerOneUpdate !== true) {
-                    console.log("Throttling saveGameState call");
-                    return;
-                }
-                
-                lastSaveTime = now;
-                window.originalSaveGameState();
-            };
+            // We're intentionally NOT throttling saveGameState anymore
+            // This allows our new synchronization system to work properly
         }
         
         console.log("Performance improvements loaded");

@@ -11,6 +11,16 @@ const ROLL_COOLDOWN = 1000; // 1 second between rolls
 const SAVE_COOLDOWN = 2000; // 2 seconds between saves
 const MOUSE_COOLDOWN = 100; // 100ms between mouse events
 
+// Add a sync lock to prevent concurrent syncs
+let isSyncing = false;
+let syncAttempts = 0;
+const MAX_SYNC_ATTEMPTS = 3;
+
+// BREAKTHROUGH: Add a forced sync queue to ensure critical game state changes are always saved
+let forceSyncQueue = [];
+let lastSyncTime = 0;
+const SYNC_INTERVAL = 500; // 500ms between forced syncs
+
 // Add turn acknowledgment system
 let turnAcknowledged = false;
 let lastTurnTimestamp = 0;
@@ -122,6 +132,14 @@ function mouseReleased() {
             .catch((error) => {
                 console.error("Error checking game state:", error);
             });
+        
+        // If a checker was selected and moved
+        if (selectedChecker !== null) {
+            // ... existing code ...
+            
+            // BREAKTHROUGH: Force sync after any move
+            queueForceSync("move_completed");
+        }
     } catch (error) {
         console.error("Error in mouseReleased:", error);
     }
@@ -287,6 +305,9 @@ function rollDice() {
                 isRolling = false;
             }
         }, 1000);
+        
+        // BREAKTHROUGH: Force sync after dice roll
+        queueForceSync("dice_rolled");
     } catch (error) {
         console.error("Error in rollDice:", error);
         isRolling = false;
@@ -350,6 +371,9 @@ function switchPlayer() {
         
         // Start turn timeout monitor
         monitorTurnTimeout();
+        
+        // BREAKTHROUGH: Force sync after player switch
+        queueForceSync("player_switched");
     } catch (error) {
         console.error("Error in switchPlayer:", error);
     }
@@ -1224,48 +1248,141 @@ function executeMove() {
 
 // Simulate debug button click to force synchronization
 function simulateDebugButtonClick() {
-    console.log("Simulating debug button click to force synchronization");
-    
-    // Force the game to start
-    if (typeof checkAndStartGame === 'function') {
-        checkAndStartGame();
+    console.log("SIMULATING DEBUG BUTTON CLICK");
+    window.debugButtonClicked = true;
+    window.forcePlayerOneUpdate = true;
+    forceSyncNow();
+}
+
+// BREAKTHROUGH: Add a function to force immediate synchronization
+function forceSyncNow() {
+    console.log("FORCE SYNC NOW: Immediate synchronization requested");
+    window.forcePlayerOneUpdate = true;
+    window.debugButtonClicked = true;
+    saveGameStateWithVerification();
+}
+
+// BREAKTHROUGH: Enhanced save with verification
+function saveGameStateWithVerification(callback) {
+    if (typeof saveGameState !== 'function') {
+        console.error("saveGameState function not available");
+        if (callback) callback(false);
+        return;
     }
     
-    // Log debug info
-    console.log("=== GAME STATE DEBUG ===");
-    console.log("gameId:", gameId);
-    console.log("playerRole:", playerRole);
-    console.log("player1Name:", player1Name);
-    console.log("player2Name:", player2Name);
-    console.log("gameStarted:", gameStarted);
-    console.log("currentPlayer:", currentPlayer);
-    console.log("dice:", dice);
-    console.log("diceRolled:", diceRolled);
-    console.log("board:", board);
+    // Save current state for verification
+    const currentBoard = JSON.stringify(window.board);
+    const currentDice = JSON.stringify(window.dice);
+    const currentPlayer = window.currentPlayer;
     
-    // Check if board has checkers
-    let hasCheckers = false;
-    if (board && Array.isArray(board)) {
-        for (let i = 0; i < board.length; i++) {
-            if (board[i] && board[i].length > 0) {
-                hasCheckers = true;
-                break;
-            }
+    console.log("FORCE SYNC: Saving game state with verification");
+    
+    // Force update flags
+    window.forcePlayerOneUpdate = true;
+    window.debugButtonClicked = true;
+    
+    // Call the original save function
+    saveGameState();
+    
+    // Verify the save after a short delay
+    setTimeout(() => {
+        // Load the game state from Firebase to verify
+        if (typeof firebase !== 'undefined' && firebase.database && window.gameId) {
+            firebase.database().ref('games/' + window.gameId).once('value')
+                .then((snapshot) => {
+                    const savedData = snapshot.val();
+                    if (!savedData) {
+                        console.error("SYNC ERROR: No data found in Firebase");
+                        retrySync(callback);
+                        return;
+                    }
+                    
+                    // Verify critical game state elements
+                    const savedBoard = JSON.stringify(savedData.board);
+                    const savedDice = JSON.stringify(savedData.dice);
+                    const savedPlayer = savedData.currentPlayer;
+                    
+                    if (savedBoard !== currentBoard || savedDice !== currentDice || savedPlayer !== currentPlayer) {
+                        console.error("SYNC ERROR: Verification failed, data mismatch");
+                        console.log("Local:", { board: currentBoard, dice: currentDice, player: currentPlayer });
+                        console.log("Saved:", { board: savedBoard, dice: savedDice, player: savedPlayer });
+                        retrySync(callback);
+                    } else {
+                        console.log("SYNC SUCCESS: Verification passed");
+                        syncAttempts = 0;
+                        if (callback) callback(true);
+                    }
+                })
+                .catch((error) => {
+                    console.error("SYNC ERROR: Firebase read error", error);
+                    retrySync(callback);
+                });
+        } else {
+            console.warn("SYNC WARNING: Firebase not available for verification");
+            if (callback) callback(false);
         }
-    }
-    console.log("Board has checkers:", hasCheckers);
-    
-    // If board is empty, force initialization
-    if (!hasCheckers && typeof initializeBoard === 'function') {
-        console.log("Board is empty, initializing...");
-        initializeBoard();
-    }
-    
-    // Force a redraw
-    if (typeof redrawBoard === 'function') {
-        redrawBoard();
+    }, 1000);
+}
+
+// BREAKTHROUGH: Retry sync if verification fails
+function retrySync(callback) {
+    syncAttempts++;
+    if (syncAttempts < MAX_SYNC_ATTEMPTS) {
+        console.log(`SYNC RETRY: Attempt ${syncAttempts} of ${MAX_SYNC_ATTEMPTS}`);
+        setTimeout(() => {
+            saveGameStateWithVerification(callback);
+        }, 1000);
+    } else {
+        console.error("SYNC FAILED: Max retry attempts reached");
+        syncAttempts = 0;
+        if (callback) callback(false);
     }
 }
 
-// Export the simulateDebugButtonClick function to the global scope
-window.simulateDebugButtonClick = simulateDebugButtonClick;
+// BREAKTHROUGH: Queue a forced sync
+function queueForceSync(reason) {
+    forceSyncQueue.push({
+        reason: reason,
+        timestamp: Date.now()
+    });
+    
+    // Process immediately if possible
+    processForceSyncQueue();
+}
+
+// BREAKTHROUGH: Process the sync queue periodically
+function processForceSyncQueue() {
+    if (forceSyncQueue.length > 0 && !isSyncing && Date.now() - lastSyncTime > SYNC_INTERVAL) {
+        isSyncing = true;
+        lastSyncTime = Date.now();
+        
+        const syncItem = forceSyncQueue.shift();
+        console.log("FORCE SYNC: Processing queued sync", syncItem);
+        
+        // Always set force update flag to true for queued syncs
+        window.forcePlayerOneUpdate = true;
+        window.debugButtonClicked = true; // This flag seems to help with synchronization
+        
+        // Call save with verification
+        saveGameStateWithVerification(() => {
+            isSyncing = false;
+            // Process next item in queue if available
+            setTimeout(processForceSyncQueue, 100);
+        });
+    }
+}
+
+// Set up periodic processing of the sync queue
+setInterval(processForceSyncQueue, 200);
+
+// BREAKTHROUGH: Call simulateDebugButtonClick after critical game actions
+// Add hooks to critical functions
+const originalExecuteMove = window.executeMove || function() {};
+window.executeMove = function(fromPoint, toPoint) {
+    const result = originalExecuteMove(fromPoint, toPoint);
+    if (result) {
+        console.log("Move executed, simulating debug button click");
+        simulateDebugButtonClick();
+    }
+    return result;
+};
