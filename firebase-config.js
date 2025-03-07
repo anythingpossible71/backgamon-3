@@ -384,25 +384,24 @@ function processFirebaseUpdate(gameData) {
             }
         }
         
-        // Update game state if game has started
-        if (gameData.gameStarted) {
-            gameStarted = true;
-            
-            // Update game state variables safely
-            if (gameData.board) board = gameData.board;
-            if (gameData.whiteBar) whiteBar = gameData.whiteBar;
-            if (gameData.blackBar) blackBar = gameData.blackBar;
-            if (gameData.whiteBearOff) whiteBearOff = gameData.whiteBearOff;
-            if (gameData.blackBearOff) blackBearOff = gameData.blackBearOff;
-            if (gameData.currentPlayer) currentPlayer = gameData.currentPlayer;
-            if (gameData.dice) dice = gameData.dice;
-            if (gameData.diceRolled !== undefined) diceRolled = gameData.diceRolled;
-            if (gameData.gameStatus) gameStatus = gameData.gameStatus;
-            
-            // Update UI directly
-            if (typeof updateUIDirectly === 'function') {
-                updateUIDirectly();
-            }
+        // Always update game state variables to ensure synchronization
+        if (gameData.board) {
+            console.log("Updating board from Firebase");
+            board = gameData.board;
+        }
+        if (gameData.whiteBar) whiteBar = gameData.whiteBar;
+        if (gameData.blackBar) blackBar = gameData.blackBar;
+        if (gameData.whiteBearOff) whiteBearOff = gameData.whiteBearOff;
+        if (gameData.blackBearOff) blackBearOff = gameData.blackBearOff;
+        if (gameData.currentPlayer) currentPlayer = gameData.currentPlayer;
+        if (gameData.dice) dice = gameData.dice;
+        if (gameData.diceRolled !== undefined) diceRolled = gameData.diceRolled;
+        if (gameData.gameStatus) gameStatus = gameData.gameStatus;
+        if (gameData.gameStarted) gameStarted = gameData.gameStarted;
+        
+        // Update UI directly
+        if (typeof updateUIDirectly === 'function') {
+            updateUIDirectly();
         }
         
     } catch (error) {

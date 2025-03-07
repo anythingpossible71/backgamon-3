@@ -225,16 +225,16 @@ function rollDice() {
 // Throttled version of saveGameState to prevent rapid Firebase updates
 function saveGameStateThrottled() {
     const currentTime = performance.now();
-    if (currentTime - lastSaveTime < SAVE_COOLDOWN) {
-        console.log("Throttling game state save (too recent)");
-        return;
-    }
     
-    lastSaveTime = currentTime;
+    // Force immediate save for moves to ensure they're synchronized
     if (typeof window.saveGameState === 'function') {
+        // Set a flag to force the update through
+        window.forcePlayerOneUpdate = true;
         window.saveGameState();
+        console.log("Forced game state save for move synchronization");
     }
 }
+
 // game-logic.js (Part 3) - Game state functions
 
 function switchPlayer() {
@@ -1061,6 +1061,10 @@ function executeMove() {
         // Update UI directly to prevent loops
         updateUIDirectly();
         
+        // Force immediate save to ensure move is synchronized
+        window.forcePlayerOneUpdate = true;
+        saveGameState();
+        
         // Check win condition
         if ((playerColor === 'white' && whiteBearOff.length === 15) ||
             (playerColor === 'black' && blackBearOff.length === 15)) {
@@ -1069,9 +1073,6 @@ function executeMove() {
             // Switch player
             switchPlayer();
         }
-        
-        // Save game state after move
-        saveGameStateThrottled();
     }
     
     selectedChecker = null;
