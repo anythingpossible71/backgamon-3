@@ -277,7 +277,15 @@ function processFirebaseUpdate(gameData) {
         if (player1Name !== "Player 1" && player2Name !== "Player 2") {
             console.log("Both players present, ensuring board visibility");
             document.getElementById('game-controls').classList.remove('hidden');
-            document.getElementById('player-join').classList.add('hidden');
+            
+            // CRITICAL: For Player 1, keep the waiting message visible
+            if (playerRole === "player1") {
+                document.getElementById('player-join').classList.remove('hidden');
+                document.getElementById('waiting-message').classList.remove('hidden');
+            } else {
+                // Only hide for Player 2
+                document.getElementById('player-join').classList.add('hidden');
+            }
         }
 
         // CRITICAL: Always update game state

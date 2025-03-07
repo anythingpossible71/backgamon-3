@@ -271,8 +271,11 @@
                     if (params.playerName) {
                         player1Name = decodeURIComponent(params.playerName);
                         document.getElementById('player1-name').textContent = player1Name;
-                        document.getElementById('player-join').classList.add('hidden');
+                        document.getElementById('name-entry').classList.add('hidden');
+                        document.getElementById('waiting-message').classList.remove('hidden');
+                        document.getElementById('player-join').classList.remove('hidden');
                         document.getElementById('game-controls').classList.remove('hidden');
+                        document.getElementById('join-title').textContent = `Welcome, ${player1Name}!`;
                         document.getElementById('player1-card').classList.add('active');
                         
                         // Initialize the game
@@ -354,11 +357,17 @@
                 debugLog("Joining as Player 1:", playerName);
                 player1Name = playerName;
                 
-                // Show waiting message and game controls
+                // Show waiting message AND game controls
                 document.getElementById('name-entry').classList.add('hidden');
                 document.getElementById('waiting-message').classList.remove('hidden');
+                document.getElementById('player-join').classList.remove('hidden');
                 document.getElementById('game-controls').classList.remove('hidden');
                 document.getElementById('join-title').textContent = `Welcome, ${playerName}!`;
+                
+                // Make sure the share URL is visible and updated
+                const baseUrl = window.location.origin + window.location.pathname;
+                const shareUrl = `${baseUrl}?gameId=${gameId}&playerNum=2`;
+                document.getElementById('share-url').textContent = shareUrl;
                 
                 // Update player card
                 document.getElementById('player1-name').textContent = playerName;
@@ -466,16 +475,21 @@
                 // Force UI update
                 gameStarted = true;
                 
-                // Hide waiting message for player 1
-                const waitingMessage = document.getElementById('waiting-message');
-                const playerJoin = document.getElementById('player-join');
-                const gameControls = document.getElementById('game-controls');
+                // For Player 1, keep the waiting message visible until Player 2 joins
+                if (playerRole === "player1") {
+                    // Do not hide player-join for Player 1
+                    document.getElementById('waiting-message').classList.remove('hidden');
+                    document.getElementById('player-join').classList.remove('hidden');
+                } else {
+                    // For Player 2, hide the joining UI
+                    document.getElementById('waiting-message').classList.add('hidden');
+                    document.getElementById('player-join').classList.add('hidden');
+                }
                 
-                if (waitingMessage) waitingMessage.classList.add('hidden');
-                if (playerJoin) playerJoin.classList.add('hidden');
-                if (gameControls) gameControls.classList.remove('hidden');
+                // Always show game controls
+                document.getElementById('game-controls').classList.remove('hidden');
                 
-                // Enable roll button for player 1
+                // Enable roll button for player 1 if it's their turn
                 if (currentPlayer === 'player1' && playerRole === 'player1') {
                     const rollButton = document.getElementById('roll-button');
                     if (rollButton) rollButton.disabled = false;
