@@ -12,7 +12,8 @@ const firebaseConfig = {
   databaseURL: "https://backgammon-multiplayer-default-rtdb.firebaseio.com"
 };
 
-// Generate a unique client ID for this browser session
+// CRITICAL: Generate a unique client ID for this browser session
+// This is used to identify and ignore our own updates coming back from Firebase
 window.clientId = generateUniqueClientId();
 console.log("Generated unique client ID:", window.clientId);
 
@@ -145,10 +146,12 @@ function saveGameState(forceUpdate = false) {
             // CRITICAL: Add client ID to identify the origin of this update
             gameData.originClientId = window.clientId;
             
+            console.log("CRITICAL SAVE: Game state with client ID: " + window.clientId);
+            
             // Save to Firebase
             firebase.database().ref('games/' + gameId).set(gameData)
                 .then(() => {
-                    console.log("Game state saved successfully");
+                    console.log("Game state saved successfully with client ID");
                     // Update local timestamp
                     localGameTimestamp = gameData.timestamp;
                 })
@@ -196,7 +199,7 @@ function loadGameState() {
         });
 }
 
-// Listen for game state changes with loop prevention
+// Listen for game state changes
 function listenForGameChanges(gameId) {
     console.log("Setting up listener for game changes:", gameId);
     
@@ -217,8 +220,13 @@ function listenForGameChanges(gameId) {
                 return;
             }
             
-            // Process the update
-            processFirebaseUpdate(gameData);
+            // CRITICAL: Directly call our implementation, not any overridden version
+            // This ensures our client ID check is ALWAYS performed
+            if (typeof window._originalProcessFirebaseUpdate === 'function') {
+                window._originalProcessFirebaseUpdate(gameData);
+            } else {
+                processFirebaseUpdate(gameData);
+            }
             
         } catch (error) {
             console.error("Error in Firebase listener:", error);
@@ -232,9 +240,14 @@ function listenForGameChanges(gameId) {
 function processFirebaseUpdate(gameData) {
     console.log("===== FIREBASE UPDATE RECEIVED =====");
     
+    // CRITICAL: Store the original implementation to ensure it's not overridden
+    if (!window._originalProcessFirebaseUpdate) {
+        window._originalProcessFirebaseUpdate = processFirebaseUpdate;
+    }
+    
     // CRITICAL: Check if this update originated from this client
     if (gameData.originClientId === window.clientId) {
-        console.log("IGNORING UPDATE: This update originated from this client");
+        console.log("IGNORING UPDATE: This update originated from this client: " + window.clientId);
         return; // Don't process our own updates coming back to us
     }
     
@@ -354,7 +367,11 @@ function processFirebaseUpdate(gameData) {
             const nextUpdate = pendingUpdate;
             pendingUpdate = null;
             setTimeout(() => {
-                processFirebaseUpdate(nextUpdate);
+                if (typeof window._originalProcessFirebaseUpdate === 'function') {
+                    window._originalProcessFirebaseUpdate(nextUpdate);
+                } else {
+                    processFirebaseUpdate(nextUpdate);
+                }
             }, 100);
         }
     }
@@ -369,6 +386,35 @@ function forceStartGame() {
         saveGameState();
     }
 }
+
+// CRITICAL: Disable any overriding of our functions to ensure client ID checking always works
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("CRITICAL: Protecting Firebase functions from being overridden");
+    
+    // Wait to ensure all scripts have loaded
+    setTimeout(function() {
+        // Store the original implementations that must be preserved
+        if (!window._originalProcessFirebaseUpdate && window.processFirebaseUpdate) {
+            window._originalProcessFirebaseUpdate = window.processFirebaseUpdate;
+        }
+        
+        // Override any attempts to replace our function
+        Object.defineProperty(window, 'processFirebaseUpdate', {
+            get: function() {
+                return window._originalProcessFirebaseUpdate || processFirebaseUpdate;
+            },
+            set: function(newFunc) {
+                console.log("BLOCKED: Attempt to override processFirebaseUpdate prevented");
+                // Store the original function if not already stored
+                if (!window._originalProcessFirebaseUpdate) {
+                    window._originalProcessFirebaseUpdate = processFirebaseUpdate;
+                }
+                // We don't allow overriding this critical function
+            },
+            configurable: false
+        });
+    }, 2000);
+});
 
 // Make these functions globally accessible
 window.generateUniqueId = generateUniqueId;

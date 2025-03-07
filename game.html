@@ -195,7 +195,7 @@
 <body>
     <!-- Version Banner - Always Visible -->
     <div id="version-banner">
-        BACKGAMMON VERSION 3.0.0 (CLIENT ID FIX - FINAL)
+        BACKGAMMON VERSION 3.1.0 (AGGRESSIVE CLIENT ID FIX)
     </div>
     
     <div id="game-container">
@@ -819,25 +819,20 @@
                 }
             }, 5000); // Check every 5 seconds
             
-            // Add hook to Firebase update handling
-            if (window.processFirebaseUpdate && !window.originalProcessFirebaseUpdate) {
-                console.log("Adding Firebase update hook for board protection");
-                
-                window.originalProcessFirebaseUpdate = window.processFirebaseUpdate;
-                window.processFirebaseUpdate = function(gameData) {
-                    // Backup the board before update
+            // CRITICAL: Do not override processFirebaseUpdate as it breaks the client ID system
+            // Instead, just do our backup before updates
+            console.log("Setting up board backup before Firebase updates");
+            
+            // Create a backup when needed
+            if (typeof window.saveGameState === 'function') {
+                // Before saving, ensure we have a valid board
+                const originalSaveGameState = window.saveGameState;
+                window.saveGameState = function() {
+                    // Backup board before saving
                     backupBoardState();
                     
                     // Call original function
-                    window.originalProcessFirebaseUpdate(gameData);
-                    
-                    // Check if board is still valid after update
-                    setTimeout(function() {
-                        if (!hasPieces()) {
-                            console.log("Board became empty after Firebase update, restoring...");
-                            restoreBoardFromBackup();
-                        }
-                    }, 500);
+                    return originalSaveGameState.apply(this, arguments);
                 };
             }
         }, 3000); // Allow 3 seconds for everything to initialize
@@ -890,23 +885,9 @@
             };
         }
         
-        // Throttle saveGameState to prevent excessive Firebase updates
-        if (typeof window.saveGameState === 'function' && !window.originalSaveGameState) {
-            console.log("Adding saveGameState throttling");
-            
-            window.originalSaveGameState = window.saveGameState;
-            
-            window.saveGameState = function() {
-                const now = Date.now();
-                if (now - lastSaveTime < THROTTLE_INTERVAL) {
-                    console.log("Throttling saveGameState call");
-                    return;
-                }
-                
-                lastSaveTime = now;
-                window.originalSaveGameState();
-            };
-        }
+        // CRITICAL FIX: REMOVE the throttling of saveGameState as it's interfering with our client ID system
+        // We must ensure every save goes through with the client ID intact
+        console.log("CRITICAL: Ensuring all game state saves are processed with client IDs");
         
         console.log("Performance improvements loaded");
     });
