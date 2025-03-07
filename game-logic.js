@@ -193,6 +193,61 @@ function rollDice() {
         const gameStatusEl = document.getElementById('game-status');
         if (gameStatusEl) gameStatusEl.textContent = gameStatus;
         
+        // Force immediate save to Firebase to ensure dice are synchronized
+        window.forcePlayerOneUpdate = true;
+        window.diceRolled = true;
+        
+        if (typeof window.saveGameState === 'function') {
+            console.log("Forcing immediate save after dice roll");
+            window.saveGameState();
+            
+            // Double-check save with a slight delay
+            setTimeout(() => {
+                console.log("Double-checking dice roll save");
+                window.saveGameState();
+                
+                // Force a redraw to ensure dice are visible
+                if (typeof redrawBoard === 'function') {
+                    redrawBoard();
+                }
+                
+                // Verify the dice roll was saved correctly
+                firebase.database().ref('games/' + window.gameId).once('value')
+                    .then((snapshot) => {
+                        const serverData = snapshot.val();
+                        if (!serverData || !serverData.dice || !Array.isArray(serverData.dice)) {
+                            console.error("Failed to save dice roll to server");
+                            return;
+                        }
+                        
+                        console.log("Server dice state:", JSON.stringify(serverData.dice));
+                        
+                        // Check if server dice match our local dice
+                        let diceMatch = true;
+                        if (serverData.dice.length !== dice.length) {
+                            diceMatch = false;
+                        } else {
+                            for (let i = 0; i < dice.length; i++) {
+                                if (serverData.dice[i] !== dice[i]) {
+                                    diceMatch = false;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (!diceMatch) {
+                            console.error("Server dice don't match local dice, retrying save");
+                            window.saveGameState();
+                        } else {
+                            console.log("Dice roll successfully saved to server");
+                        }
+                    })
+                    .catch((error) => {
+                        console.error("Error verifying dice roll save:", error);
+                    });
+            }, 500);
+        }
+        
         // Use a timeout to check for legal moves after UI updates
         setTimeout(() => {
             try {
@@ -207,15 +262,18 @@ function rollDice() {
                         switchPlayer();
                     }, 2000);
                 } else {
-                    // Save game state after rolling
-                    saveGameStateThrottled();
+                    // Force another save to ensure dice and legal moves are synchronized
+                    window.forcePlayerOneUpdate = true;
+                    if (typeof window.saveGameState === 'function') {
+                        window.saveGameState();
+                    }
                 }
             } catch (error) {
                 console.error("Error checking for legal moves:", error);
             } finally {
                 isRolling = false;
             }
-        }, 500);
+        }, 1000);
     } catch (error) {
         console.error("Error in rollDice:", error);
         isRolling = false;
