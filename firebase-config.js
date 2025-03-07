@@ -97,13 +97,22 @@ function saveGameState() {
             forceUpdate: window.forcePlayerOneUpdate === true,
             debugClicked: window.debugButtonClicked === true,
             gameId: window.gameId,
-            playerRole: window.playerRole
+            playerRole: window.playerRole,
+            gameStateVersion: window.gameStateVersion || 0
         });
         
         // Don't save if Firebase isn't initialized or no game ID
         if (!firebase.database || !window.gameId) {
             console.error("SAVE ERROR: Firebase not initialized or no game ID");
             return false;
+        }
+        
+        // NETWORK FIX: Check if we should use local storage instead
+        const useLocalStorage = typeof window.shouldUseLocalStorage === 'function' && window.shouldUseLocalStorage();
+        
+        // NETWORK FIX: If we're using local storage, save to it first
+        if (useLocalStorage && typeof window.saveStateToLocalStorage === 'function') {
+            window.saveStateToLocalStorage();
         }
         
         // Create deep copies of all game state variables to avoid reference issues
@@ -136,6 +145,13 @@ function saveGameState() {
             
         const diceCopy = Array.isArray(window.dice) ? [...window.dice] : [];
         
+        // NETWORK FIX: Increment game state version
+        if (typeof window.gameStateVersion === 'undefined') {
+            window.gameStateVersion = 1;
+        } else {
+            window.gameStateVersion++;
+        }
+        
         // Prepare game data with deep copies
         const gameData = {
             board: boardCopy,
@@ -152,13 +168,10 @@ function saveGameState() {
             gameStarted: window.gameStarted === true,
             lastMoveBy: window.playerRole,
             timestamp: firebase.database.ServerValue.TIMESTAMP,
-            gameStateVersion: window.gameStateVersion ? window.gameStateVersion + 1 : 1,
+            gameStateVersion: window.gameStateVersion,
             forceUpdate: window.forcePlayerOneUpdate === true,
             debugButtonClicked: window.debugButtonClicked === true
         };
-        
-        // Update local version counter
-        window.gameStateVersion = gameData.gameStateVersion;
         
         // Save to Firebase with error handling
         return firebase.database().ref('games/' + window.gameId).update(gameData)
@@ -180,6 +193,13 @@ function saveGameState() {
             })
             .catch(error => {
                 console.error("SAVE ERROR: Failed to save game state", error);
+                
+                // NETWORK FIX: If Firebase save fails, at least we have local storage
+                if (useLocalStorage && typeof window.saveStateToLocalStorage === 'function') {
+                    console.log("SAVE ERROR: Falling back to local storage");
+                    window.saveStateToLocalStorage();
+                }
+                
                 return false;
             });
     } catch (error) {
@@ -336,6 +356,12 @@ function processFirebaseUpdate(gameData) {
         // CRITICAL FIX: Check if we have a locked board state that should be preserved
         const hasLockedState = window.lastBoardState && Date.now() - window.lastBoardState.timestamp < 5000;
         
+        // NETWORK FIX: Check if we should use local storage instead of Firebase
+        const useLocalStorage = typeof window.shouldUseLocalStorage === 'function' && window.shouldUseLocalStorage();
+        
+        // NETWORK FIX: Check if the incoming update is older than our local state
+        const isOlderUpdate = gameData.gameStateVersion < (window.gameStateVersion || 0);
+        
         // Update player names and game status immediately
         if (gameData.player1Name) window.player1Name = gameData.player1Name;
         if (gameData.player2Name) window.player2Name = gameData.player2Name;
@@ -353,7 +379,9 @@ function processFirebaseUpdate(gameData) {
         
         // CRITICAL FIX: Only update the board if we don't have a locked state
         // or if the update is from the other player
-        if (!hasLockedState || isFromOtherPlayer) {
+        // NETWORK FIX: Also check if we should use local storage instead
+        if ((!hasLockedState && !useLocalStorage && !isOlderUpdate) || 
+            (isFromOtherPlayer && !useLocalStorage)) {
             console.log("UPDATE: Updating board state from Firebase");
             
             // Always update these game state variables
@@ -365,8 +393,20 @@ function processFirebaseUpdate(gameData) {
             if (typeof gameData.currentPlayer !== 'undefined') window.currentPlayer = gameData.currentPlayer;
             if (Array.isArray(gameData.dice)) window.dice = gameData.dice;
             if (typeof gameData.diceRolled !== 'undefined') window.diceRolled = gameData.diceRolled;
+            if (typeof gameData.gameStateVersion !== 'undefined') window.gameStateVersion = gameData.gameStateVersion;
         } else {
-            console.log("UPDATE: Ignoring board update due to locked state");
+            console.log("UPDATE: Ignoring board update due to locked state or local storage preference");
+            
+            // NETWORK FIX: If we're ignoring the update but it's from the other player,
+            // we should force our state to Firebase to ensure consistency
+            if (isFromOtherPlayer && (hasLockedState || useLocalStorage)) {
+                console.log("UPDATE: Forcing our state to Firebase after ignoring update from other player");
+                setTimeout(() => {
+                    if (typeof window.forceSyncNow === 'function') {
+                        window.forceSyncNow();
+                    }
+                }, 1000);
+            }
         }
         
         // Update UI directly
@@ -401,6 +441,14 @@ function processFirebaseUpdate(gameData) {
         if (hasLockedState && typeof window.checkForReversion === 'function') {
             console.log("UPDATE: Checking for reversion after Firebase update");
             window.checkForReversion();
+        }
+        
+        // NETWORK FIX: If we're using local storage, try to load from it
+        if (useLocalStorage && typeof window.loadStateFromLocalStorage === 'function') {
+            console.log("UPDATE: Checking local storage after Firebase update");
+            setTimeout(() => {
+                window.loadStateFromLocalStorage();
+            }, 500);
         }
         
         // Clear the safety timeout and release the lock

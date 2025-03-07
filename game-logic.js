@@ -26,6 +26,10 @@ let lockedMoves = [];
 let lastBoardState = null;
 let moveReversionTimeout = null;
 
+// NETWORK FIX: Add local storage backup to preserve moves across network issues
+const LOCAL_STORAGE_KEY = 'backgammon_state_';
+let lastSavedStateTimestamp = 0;
+
 // Add turn acknowledgment system
 let turnAcknowledged = false;
 let lastTurnTimestamp = 0;
@@ -1312,6 +1316,9 @@ function lockCurrentBoardState(reason) {
         reason: reason
     };
     
+    // NETWORK FIX: Save to local storage as well
+    saveStateToLocalStorage();
+    
     // Set up reversion prevention
     if (moveReversionTimeout) {
         clearTimeout(moveReversionTimeout);
@@ -1361,6 +1368,14 @@ function checkForReversion() {
         }
     }
     
+    // NETWORK FIX: Also check if we should restore from local storage
+    if (!hasReverted) {
+        // Try to load from local storage if it's been more than 5 seconds since our last save
+        if (Date.now() - lastSavedStateTimestamp > 5000) {
+            loadStateFromLocalStorage();
+        }
+    }
+    
     // If the board has reverted, restore it
     if (hasReverted) {
         console.log("MOVE LOCK: Board has reverted, restoring locked state");
@@ -1407,6 +1422,9 @@ window.executeMove = function(fromPoint, toPoint) {
         window.forcePlayerOneUpdate = true;
         window.debugButtonClicked = true;
         forceSyncNow();
+        
+        // NETWORK FIX: Increment game state version
+        window.gameStateVersion = (window.gameStateVersion || 0) + 1;
     }
     
     return result;
@@ -1425,6 +1443,9 @@ window.rollDice = function() {
     window.debugButtonClicked = true;
     forceSyncNow();
     
+    // NETWORK FIX: Increment game state version
+    window.gameStateVersion = (window.gameStateVersion || 0) + 1;
+    
     return result;
 };
 
@@ -1440,6 +1461,9 @@ window.switchPlayer = function() {
     window.forcePlayerOneUpdate = true;
     window.debugButtonClicked = true;
     forceSyncNow();
+    
+    // NETWORK FIX: Increment game state version
+    window.gameStateVersion = (window.gameStateVersion || 0) + 1;
     
     return result;
 };
@@ -1487,6 +1511,9 @@ function saveGameStateWithVerification(callback) {
     // Force update flags
     window.forcePlayerOneUpdate = true;
     window.debugButtonClicked = true;
+    
+    // NETWORK FIX: Save to local storage first
+    saveStateToLocalStorage();
     
     // Call the original save function
     saveGameState();
@@ -1556,3 +1583,113 @@ function queueForceSync(reason) {
     // Process immediately if possible
     processForceSyncQueue();
 }
+
+// NETWORK FIX: Function to save game state to local storage
+function saveStateToLocalStorage() {
+    if (!window.gameId) return;
+    
+    try {
+        console.log("NETWORK FIX: Saving game state to local storage");
+        
+        // Create a state object with all critical game data
+        const state = {
+            board: JSON.parse(JSON.stringify(window.board)),
+            whiteBar: JSON.parse(JSON.stringify(window.whiteBar)),
+            blackBar: JSON.parse(JSON.stringify(window.blackBar)),
+            whiteBearOff: JSON.parse(JSON.stringify(window.whiteBearOff)),
+            blackBearOff: JSON.parse(JSON.stringify(window.blackBearOff)),
+            currentPlayer: window.currentPlayer,
+            dice: [...window.dice],
+            diceRolled: window.diceRolled,
+            playerRole: window.playerRole,
+            timestamp: Date.now(),
+            gameStateVersion: window.gameStateVersion || 0
+        };
+        
+        // Save to local storage with game ID as part of the key
+        localStorage.setItem(LOCAL_STORAGE_KEY + window.gameId + '_' + window.playerRole, JSON.stringify(state));
+        lastSavedStateTimestamp = state.timestamp;
+        
+        console.log("NETWORK FIX: Game state saved to local storage", { timestamp: state.timestamp });
+    } catch (error) {
+        console.error("NETWORK FIX: Error saving to local storage", error);
+    }
+}
+
+// NETWORK FIX: Function to load game state from local storage
+function loadStateFromLocalStorage() {
+    if (!window.gameId || !window.playerRole) return false;
+    
+    try {
+        console.log("NETWORK FIX: Attempting to load game state from local storage");
+        
+        // Get state from local storage
+        const stateJson = localStorage.getItem(LOCAL_STORAGE_KEY + window.gameId + '_' + window.playerRole);
+        if (!stateJson) {
+            console.log("NETWORK FIX: No saved state found in local storage");
+            return false;
+        }
+        
+        const state = JSON.parse(stateJson);
+        
+        // Check if state is valid and recent (within last 30 minutes)
+        if (!state || !state.timestamp || Date.now() - state.timestamp > 30 * 60 * 1000) {
+            console.log("NETWORK FIX: Saved state is too old or invalid");
+            return false;
+        }
+        
+        console.log("NETWORK FIX: Found valid saved state in local storage", { timestamp: state.timestamp });
+        
+        // Only restore if we're the same player who saved it
+        if (state.playerRole !== window.playerRole) {
+            console.log("NETWORK FIX: Saved state is for a different player role");
+            return false;
+        }
+        
+        // Check if the saved state is newer than the current state
+        if (state.gameStateVersion <= (window.gameStateVersion || 0)) {
+            console.log("NETWORK FIX: Current state is newer than saved state");
+            return false;
+        }
+        
+        // Restore the state
+        window.board = state.board;
+        window.whiteBar = state.whiteBar;
+        window.blackBar = state.blackBar;
+        window.whiteBearOff = state.whiteBearOff;
+        window.blackBearOff = state.blackBearOff;
+        window.currentPlayer = state.currentPlayer;
+        window.dice = state.dice;
+        window.diceRolled = state.diceRolled;
+        window.gameStateVersion = state.gameStateVersion;
+        
+        console.log("NETWORK FIX: Game state restored from local storage");
+        
+        // Force a redraw
+        if (typeof redrawBoard === 'function') {
+            redrawBoard();
+        }
+        
+        // Force a save to Firebase
+        window.forcePlayerOneUpdate = true;
+        window.debugButtonClicked = true;
+        forceSyncNow();
+        
+        return true;
+    } catch (error) {
+        console.error("NETWORK FIX: Error loading from local storage", error);
+        return false;
+    }
+}
+
+// NETWORK FIX: Function to check if we should use local storage instead of Firebase
+function shouldUseLocalStorage() {
+    // Always use local storage for the active player
+    return window.playerRole === 'player1' && window.currentPlayer === 'player1' ||
+           window.playerRole === 'player2' && window.currentPlayer === 'player2';
+}
+
+// NETWORK FIX: Initialize by loading from local storage if available
+setTimeout(() => {
+    loadStateFromLocalStorage();
+}, 3000); // Wait for everything to initialize first
