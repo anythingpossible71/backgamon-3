@@ -105,6 +105,8 @@ function saveGameState() {
             console.log("Currently updating from Firebase, save skipped");
             return;
         }
+    } else {
+        console.log("CRITICAL: Force update flag set, bypassing all throttling");
     }
     
     lastUpdateTime = now;
@@ -197,13 +199,9 @@ function saveGameState() {
             diceRolled: isDiceRolled, // Flag for dice roll
             version: gameStateVersion,
             timestamp: firebase.database.ServerValue.TIMESTAMP,
-            lastMoveBy: playerRole // Add who made the last move
+            lastMoveBy: playerRole, // Add who made the last move
+            debugButtonClicked: true // Add flag to indicate debug button was clicked
         };
-        
-        // Clear the flags
-        window.forcePlayerOneUpdate = false;
-        window.moveCompleted = false;
-        window.diceRolled = false;
         
         // Debug the game data
         console.log("Game data prepared for Firebase:", JSON.stringify(gameData.board));
@@ -219,6 +217,11 @@ function saveGameState() {
             .then(() => {
                 console.log("Game state saved successfully, version:", gameStateVersion);
                 
+                // Clear the flags AFTER successful save
+                window.forcePlayerOneUpdate = false;
+                window.moveCompleted = false;
+                window.diceRolled = false;
+                
                 // Force a redraw after saving
                 if (typeof redrawBoard === 'function') {
                     redrawBoard();
@@ -228,16 +231,49 @@ function saveGameState() {
                 if (typeof updateUIDirectly === 'function') {
                     updateUIDirectly();
                 }
+                
+                // Verify the save was successful
+                setTimeout(() => {
+                    firebase.database().ref('games/' + gameId).once('value')
+                        .then((snapshot) => {
+                            const serverData = snapshot.val();
+                            if (!serverData || !serverData.board) {
+                                console.error("Failed to save game state to server");
+                                
+                                // Try again
+                                window.forcePlayerOneUpdate = true;
+                                saveGameState();
+                                return;
+                            }
+                            
+                            console.log("Server board state verified");
+                        })
+                        .catch((error) => {
+                            console.error("Error verifying game state save:", error);
+                        });
+                }, 500);
             })
             .catch((error) => {
                 console.error("Error saving game state:", error);
                 // Decrement version on failure
                 gameStateVersion--;
+                
+                // Try again after a delay
+                setTimeout(() => {
+                    window.forcePlayerOneUpdate = true;
+                    saveGameState();
+                }, 1000);
             });
     } catch (error) {
         console.error("Error preparing game state for saving:", error);
         // Decrement version on failure
         gameStateVersion--;
+        
+        // Try again after a delay
+        setTimeout(() => {
+            window.forcePlayerOneUpdate = true;
+            saveGameState();
+        }, 1000);
     }
 }
 
@@ -383,10 +419,11 @@ function processFirebaseUpdate(gameData) {
     try {
         console.log("Processing Firebase update", gameData);
         
-        // Check for force update flag
+        // Check for special flags
         const isForceUpdate = gameData.forceUpdate === true;
         const isMoveCompleted = gameData.moveCompleted === true;
         const isDiceRolled = gameData.diceRolled === true;
+        const isDebugButtonClicked = gameData.debugButtonClicked === true;
         
         // Check if this update is from the other player
         const isFromOtherPlayer = gameData.lastMoveBy && gameData.lastMoveBy !== playerRole;
@@ -394,7 +431,8 @@ function processFirebaseUpdate(gameData) {
         console.log("Update from other player:", isFromOtherPlayer, 
                    "Force update:", isForceUpdate, 
                    "Move completed:", isMoveCompleted,
-                   "Dice rolled:", isDiceRolled);
+                   "Dice rolled:", isDiceRolled,
+                   "Debug button clicked:", isDebugButtonClicked);
         
         // Update player names and trigger UI updates immediately
         let playersChanged = false;
@@ -414,9 +452,9 @@ function processFirebaseUpdate(gameData) {
         }
         
         // If players changed or force update, update game state
-        if (playersChanged || isForceUpdate) {
+        if (playersChanged || isForceUpdate || isDebugButtonClicked) {
             // Check if both players have joined
-            if ((player1Name !== "Player 1" && player2Name !== "Player 2") || isForceUpdate) {
+            if ((player1Name !== "Player 1" && player2Name !== "Player 2") || isForceUpdate || isDebugButtonClicked) {
                 console.log("Both players joined or force update received, updating UI");
                 
                 // Set game as started
@@ -432,12 +470,12 @@ function processFirebaseUpdate(gameData) {
                 if (gameControls) gameControls.classList.remove('hidden');
                 
                 // Update game status
-                gameStatus = player1Name + "'s turn to roll";
+                gameStatus = gameData.gameStatus || (player1Name + "'s turn to roll");
                 const gameStatusEl = document.getElementById('game-status');
                 if (gameStatusEl) gameStatusEl.textContent = gameStatus;
                 
                 // Enable roll button for player 1
-                if (playerRole === 'player1') {
+                if (playerRole === 'player1' && currentPlayer === 'player1') {
                     const rollButton = document.getElementById('roll-button');
                     if (rollButton) rollButton.disabled = false;
                 }
@@ -545,8 +583,8 @@ function processFirebaseUpdate(gameData) {
             updateUIDirectly();
         }
         
-        // If this was a move from the other player or dice were rolled, redraw the board
-        if ((isFromOtherPlayer || isMoveCompleted || isDiceRolled) && typeof redrawBoard === 'function') {
+        // If this was a move from the other player or dice were rolled or debug button was clicked, redraw the board
+        if ((isFromOtherPlayer || isMoveCompleted || isDiceRolled || isDebugButtonClicked) && typeof redrawBoard === 'function') {
             console.log("Redrawing board after update");
             redrawBoard();
             
@@ -558,6 +596,12 @@ function processFirebaseUpdate(gameData) {
                 // Update UI again
                 if (typeof updateUIDirectly === 'function') {
                     updateUIDirectly();
+                }
+                
+                // If this was a debug button click, simulate a debug button click on this side too
+                if (isDebugButtonClicked && typeof window.simulateDebugButtonClick === 'function') {
+                    console.log("Simulating debug button click in response to remote debug button click");
+                    window.simulateDebugButtonClick();
                 }
             }, 500);
         }

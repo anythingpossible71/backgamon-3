@@ -193,6 +193,9 @@ function rollDice() {
         const gameStatusEl = document.getElementById('game-status');
         if (gameStatusEl) gameStatusEl.textContent = gameStatus;
         
+        // CRITICAL: Simulate debug button click to force synchronization
+        simulateDebugButtonClick();
+        
         // Force immediate save to Firebase to ensure dice are synchronized
         window.forcePlayerOneUpdate = true;
         window.diceRolled = true;
@@ -210,6 +213,9 @@ function rollDice() {
                 if (typeof redrawBoard === 'function') {
                     redrawBoard();
                 }
+                
+                // Simulate debug button click again after delay
+                simulateDebugButtonClick();
                 
                 // Verify the dice roll was saved correctly
                 firebase.database().ref('games/' + window.gameId).once('value')
@@ -238,6 +244,9 @@ function rollDice() {
                         if (!diceMatch) {
                             console.error("Server dice don't match local dice, retrying save");
                             window.saveGameState();
+                            
+                            // Simulate debug button click again
+                            simulateDebugButtonClick();
                         } else {
                             console.log("Dice roll successfully saved to server");
                         }
@@ -266,6 +275,9 @@ function rollDice() {
                     window.forcePlayerOneUpdate = true;
                     if (typeof window.saveGameState === 'function') {
                         window.saveGameState();
+                        
+                        // Simulate debug button click again
+                        simulateDebugButtonClick();
                     }
                 }
             } catch (error) {
@@ -317,10 +329,23 @@ function switchPlayer() {
         // Update game status
         gameStatus = (currentPlayer === 'player1' ? player1Name : player2Name) + "'s turn";
         
+        // CRITICAL: Simulate debug button click to force synchronization
+        simulateDebugButtonClick();
+        
         // Force immediate save to Firebase
+        window.forcePlayerOneUpdate = true;
         saveGameState();
         
         console.log("Switched player from", previousPlayer, "to", currentPlayer);
+        
+        // Save again after a delay
+        setTimeout(() => {
+            window.forcePlayerOneUpdate = true;
+            saveGameState();
+            
+            // Simulate debug button click again
+            simulateDebugButtonClick();
+        }, 500);
         
         // Start turn timeout monitor
         monitorTurnTimeout();
@@ -1138,15 +1163,12 @@ function executeMove() {
         // Update UI directly to prevent loops
         updateUIDirectly();
         
+        // CRITICAL: Simulate debug button click to force synchronization
+        simulateDebugButtonClick();
+        
         // Force immediate save to ensure move is synchronized
         window.forcePlayerOneUpdate = true;
         window.moveCompleted = true;
-        
-        // CRITICAL: Use the same approach as the debug button
-        // Force the game to start (this is what makes the debug button work)
-        if (typeof checkAndStartGame === 'function') {
-            checkAndStartGame();
-        }
         
         // Direct Firebase save without throttling
         if (typeof window.saveGameState === 'function') {
@@ -1162,6 +1184,9 @@ function executeMove() {
             setTimeout(() => {
                 console.log("Saving again after delay");
                 window.saveGameState();
+                
+                // Simulate debug button click again after delay
+                simulateDebugButtonClick();
                 
                 // Force another redraw
                 if (typeof redrawBoard === 'function') {
@@ -1195,3 +1220,51 @@ function executeMove() {
     validMoves = [];
     combinedMoves = [];
 }
+
+// Simulate debug button click to force synchronization
+function simulateDebugButtonClick() {
+    console.log("Simulating debug button click to force synchronization");
+    
+    // Force the game to start
+    if (typeof checkAndStartGame === 'function') {
+        checkAndStartGame();
+    }
+    
+    // Log debug info
+    console.log("=== GAME STATE DEBUG ===");
+    console.log("gameId:", gameId);
+    console.log("playerRole:", playerRole);
+    console.log("player1Name:", player1Name);
+    console.log("player2Name:", player2Name);
+    console.log("gameStarted:", gameStarted);
+    console.log("currentPlayer:", currentPlayer);
+    console.log("dice:", dice);
+    console.log("diceRolled:", diceRolled);
+    console.log("board:", board);
+    
+    // Check if board has checkers
+    let hasCheckers = false;
+    if (board && Array.isArray(board)) {
+        for (let i = 0; i < board.length; i++) {
+            if (board[i] && board[i].length > 0) {
+                hasCheckers = true;
+                break;
+            }
+        }
+    }
+    console.log("Board has checkers:", hasCheckers);
+    
+    // If board is empty, force initialization
+    if (!hasCheckers && typeof initializeBoard === 'function') {
+        console.log("Board is empty, initializing...");
+        initializeBoard();
+    }
+    
+    // Force a redraw
+    if (typeof redrawBoard === 'function') {
+        redrawBoard();
+    }
+}
+
+// Export the simulateDebugButtonClick function to the global scope
+window.simulateDebugButtonClick = simulateDebugButtonClick;

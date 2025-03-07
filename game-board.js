@@ -413,12 +413,9 @@ function getCheckerY(pointIndex, checkerIndex) {
 // Check if both players have joined and force game to start if needed
 function checkAndStartGame() {
     try {
-        safeDebugLog("Checking if game can start...");
+        console.log("CRITICAL: Forcing game to start and synchronize...");
         
         // Always force game to start when called
-        safeDebugLog("Forcing game to start");
-        
-        // Force UI update
         gameStarted = true;
         
         // Hide waiting message for player 1
@@ -443,7 +440,7 @@ function checkAndStartGame() {
         // Update other UI elements without using functions that might cause loops
         updateUIDirectly();
         
-        // Force immediate save to Firebase
+        // Force immediate save to Firebase with maximum priority
         if (typeof saveGameState === 'function') {
             // Set flags to force update
             window.forcePlayerOneUpdate = true;
@@ -453,12 +450,27 @@ function checkAndStartGame() {
             
             // Save again after a delay to ensure it's properly saved
             setTimeout(() => {
+                window.forcePlayerOneUpdate = true;
                 saveGameState();
                 
                 // Force a redraw
                 if (typeof redrawBoard === 'function') {
                     redrawBoard();
                 }
+                
+                // Update UI again
+                updateUIDirectly();
+                
+                // Save one more time after another delay
+                setTimeout(() => {
+                    window.forcePlayerOneUpdate = true;
+                    saveGameState();
+                    
+                    // Force another redraw
+                    if (typeof redrawBoard === 'function') {
+                        redrawBoard();
+                    }
+                }, 500);
             }, 500);
         }
     } catch (error) {
