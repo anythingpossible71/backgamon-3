@@ -86,41 +86,71 @@ function prepareGameDataForSaving(gameData) {
 
 // Save game state to Firebase with throttling
 function saveGameState() {
-    console.log("Saving game state...");
+    const now = Date.now();
     
-    if (!gameId) {
-        console.error("No game ID, cannot save state");
+    // Check if we're trying to save too frequently
+    if (now - lastUpdateTime < SAVE_THROTTLE) {
+        console.log("Throttling Firebase update (too frequent)");
         return;
     }
-
+    
+    lastUpdateTime = now;
+    
+    if (!gameId) {
+        console.log("No game ID, cannot save state");
+        return;
+    }
+    
+    // Skip saving if already updating from Firebase
+    if (isCurrentlyUpdating) {
+        console.log("Currently updating from Firebase, save skipped");
+        return;
+    }
+    
     try {
-        // Create a clean game state object
+        console.log("Saving game state for game:", gameId);
+        
+        // Increment version number for this update
+        gameStateVersion++;
+        
         const gameData = {
-            board: JSON.parse(JSON.stringify(board)), // Deep copy
-            whiteBar: [...whiteBar],
-            blackBar: [...blackBar],
-            whiteBearOff: [...whiteBearOff],
-            blackBearOff: [...blackBearOff],
+            board: board,
+            whiteBar: whiteBar,
+            blackBar: blackBar,
+            whiteBearOff: whiteBearOff,
+            blackBearOff: blackBearOff,
             currentPlayer: currentPlayer,
-            dice: [...dice],
+            dice: dice,
             diceRolled: diceRolled,
             gameStatus: gameStatus,
             player1Name: player1Name,
             player2Name: player2Name,
             gameStarted: gameStarted,
-            timestamp: Date.now()
+            version: gameStateVersion,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
         };
-
-        // Save to Firebase immediately
-        firebase.database().ref('games/' + gameId).set(gameData)
+        
+        // Use the serializer to prepare safe data
+        const safeData = prepareGameDataForSaving(gameData);
+        
+        // Update local timestamp expectation
+        localGameTimestamp = now;
+        
+        console.log("Saving data to Firebase");
+        
+        firebase.database().ref('games/' + gameId).update(safeData)
             .then(() => {
-                console.log("Game state saved successfully");
+                console.log("Game state saved successfully, version:", gameStateVersion);
             })
             .catch((error) => {
                 console.error("Error saving game state:", error);
+                // Decrement version on failure
+                gameStateVersion--;
             });
     } catch (error) {
         console.error("Error preparing game state for saving:", error);
+        // Decrement version on failure
+        gameStateVersion--;
     }
 }
 
@@ -224,7 +254,7 @@ function processFirebaseUpdate(gameData) {
     console.log("Processing Firebase update with data:", gameData);
     
     try {
-        // Always update player names immediately
+        // CRITICAL: Always update player names and game state
         if (gameData.player1Name) {
             player1Name = gameData.player1Name;
             document.getElementById('player1-name').textContent = player1Name;
@@ -232,6 +262,14 @@ function processFirebaseUpdate(gameData) {
         if (gameData.player2Name) {
             player2Name = gameData.player2Name;
             document.getElementById('player2-name').textContent = player2Name;
+        }
+        
+        // Update game started state
+        if (gameData.gameStarted) {
+            gameStarted = true;
+            // Show game controls when game is started
+            document.getElementById('game-controls').classList.remove('hidden');
+            document.getElementById('player-join').classList.add('hidden');
         }
 
         // CRITICAL: Always accept game state updates
@@ -268,6 +306,13 @@ function processFirebaseUpdate(gameData) {
         // Force redraw of the board
         if (typeof redraw === 'function') redraw();
         
+        // Check if both players have joined and start game if needed
+        if (player1Name !== "Player 1" && player2Name !== "Player 2") {
+            if (typeof forceStartGame === 'function') {
+                forceStartGame();
+            }
+        }
+        
         console.log("Firebase update processed successfully");
     } catch (error) {
         console.error("Error processing Firebase update:", error);
@@ -290,18 +335,12 @@ function forceStartGame() {
     currentPlayer = 'player1';
     
     // Update UI
-    if (document.getElementById('player-join')) {
-        document.getElementById('player-join').classList.add('hidden');
-    }
-    if (document.getElementById('game-controls')) {
-        document.getElementById('game-controls').classList.remove('hidden');
-    }
+    document.getElementById('player-join').classList.add('hidden');
+    document.getElementById('waiting-message').classList.add('hidden');
+    document.getElementById('game-controls').classList.remove('hidden');
     
     // Update game status
     gameStatus = player1Name + "'s turn to roll";
-    if (document.getElementById('game-status')) {
-        document.getElementById('game-status').textContent = gameStatus;
-    }
     
     // Enable roll button for player 1
     if (currentPlayer === 'player1' && playerRole === 'player1') {
@@ -309,7 +348,7 @@ function forceStartGame() {
         if (rollButton) rollButton.disabled = false;
     }
     
-    // Save the state
+    // Save the state immediately
     saveGameState();
     
     console.log("Game forcefully started");

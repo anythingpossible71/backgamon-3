@@ -272,24 +272,28 @@
                         player1Name = playerName;
                         playerRole = "player1";
                         
-                        // Update UI to show waiting for player 2
+                        // Show game controls immediately for Player 1
                         document.getElementById('player-join').classList.remove('hidden');
                         document.getElementById('name-entry').classList.add('hidden');
                         document.getElementById('waiting-message').classList.remove('hidden');
+                        document.getElementById('game-controls').classList.remove('hidden');
                         document.getElementById('join-title').textContent = `Welcome, ${playerName}!`;
                         
                         // Update player1 card
                         document.getElementById('player1-name').textContent = playerName;
                         document.getElementById('player1-card').classList.add('active');
                         
-                        // Initialize board
+                        // Initialize board and save state
                         if (typeof initializeBoard === 'function') {
                             initializeBoard();
                         }
-                        
-                        // Save initial game state to Firebase
                         if (typeof saveGameState === 'function') {
                             saveGameState();
+                        }
+                        
+                        // Set up Firebase listener
+                        if (typeof listenForGameChanges === 'function') {
+                            listenForGameChanges(gameId);
                         }
                     } 
                     else if (playerNum === 2) {
@@ -305,16 +309,18 @@
                         // Update player2 card
                         document.getElementById('player2-name').textContent = playerName;
                         
-                        // Start game
-                        startGame();
+                        // Force game to start
+                        if (typeof forceStartGame === 'function') {
+                            forceStartGame();
+                        }
                         
-                        // Save updated game state to Firebase
-                        if (typeof saveGameState === 'function') {
-                            saveGameState();
+                        // Set up Firebase listener
+                        if (typeof listenForGameChanges === 'function') {
+                            listenForGameChanges(gameId);
                         }
                     }
                 } else if (params.playerNum === '2') {
-                    // Player 2 is joining - always show name entry form
+                    // Player 2 is joining - show name entry form
                     debugLog("Showing Player 2 join form");
                     document.getElementById('player-join').classList.remove('hidden');
                     document.getElementById('waiting-message').classList.add('hidden');
@@ -322,25 +328,15 @@
                     document.getElementById('join-title').textContent = 'Join as Player 2';
                     document.getElementById('join-message').textContent = 'Enter your name to join this game:';
                     
-                    // Load existing game state from Firebase
+                    // Load existing game state
                     if (typeof loadGameState === 'function') {
                         loadGameState();
                     }
-                } else {
-                    // No player info, show join UI
-                    debugLog("No player info, showing join UI");
-                    document.getElementById('player-join').classList.remove('hidden');
-                    document.getElementById('join-message').textContent = 'Enter your name to join this game:';
                     
-                    // Load existing game state from Firebase
-                    if (typeof loadGameState === 'function') {
-                        loadGameState();
+                    // Set up Firebase listener
+                    if (typeof listenForGameChanges === 'function') {
+                        listenForGameChanges(gameId);
                     }
-                }
-                
-                // Set up Firebase listener for real-time updates
-                if (typeof listenForGameChanges === 'function') {
-                    listenForGameChanges(gameId);
                 }
             } else {
                 // No game ID, redirect to index page
@@ -349,7 +345,7 @@
             }
         }
         
-        // Join button handler
+        // Join button handler with improved logic
         document.getElementById('join-button').addEventListener('click', function() {
             debugLog("Join button clicked");
             const playerName = document.getElementById('player-name-input').value.trim();
@@ -379,10 +375,12 @@
                 document.getElementById('player2-name').textContent = playerName;
                 document.getElementById('player2-card').classList.add('active');
                 
-                // Start game
-                startGame();
+                // Force game to start
+                if (typeof forceStartGame === 'function') {
+                    forceStartGame();
+                }
                 
-                // Save game state with player 2 info
+                // Save game state
                 if (typeof saveGameState === 'function') {
                     saveGameState();
                 }
@@ -397,12 +395,13 @@
                 const newUrl = `${window.location.pathname}?gameId=${gameId}&playerNum=1&playerName=${encodeURIComponent(playerName)}`;
                 window.history.pushState({}, '', newUrl);
                 
-                // Update UI to show waiting for player 2
+                // Show game controls immediately for Player 1
                 document.getElementById('name-entry').classList.add('hidden');
                 document.getElementById('waiting-message').classList.remove('hidden');
+                document.getElementById('game-controls').classList.remove('hidden');
                 document.getElementById('join-title').textContent = `Welcome, ${playerName}!`;
                 
-                // Update share URL for player 2 (without player 1's name)
+                // Update share URL for player 2
                 const baseUrl = window.location.origin + window.location.pathname;
                 const shareUrl = `${baseUrl}?gameId=${gameId}&playerNum=2`;
                 document.getElementById('share-url').textContent = shareUrl;
@@ -416,7 +415,7 @@
                     initializeBoard();
                 }
                 
-                // Save initial game state to Firebase
+                // Save initial game state
                 if (typeof saveGameState === 'function') {
                     saveGameState();
                 }
