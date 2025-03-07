@@ -195,7 +195,7 @@
 <body>
     <!-- Version Banner - Always Visible -->
     <div id="version-banner">
-        BACKGAMMON VERSION 5.0.0 - MANUAL SYNC
+        BACKGAMMON VERSION 6.0.0 - POLLING SOLUTION
     </div>
     
     <div id="game-container">
@@ -241,13 +241,18 @@
             
             <div id="game-status">Waiting for players...</div>
             
-            <!-- MANUAL SYNC BUTTONS -->
-            <div style="margin-top: 20px; text-align: center; background-color: #ffe0e0; padding: 10px; border-radius: 8px;">
-                <h3 style="margin-top: 0; color: #d32f2f;">Manual Synchronization Tools</h3>
-                <p>If you don't see the other player's moves, use these buttons:</p>
+            <!-- MANUAL SYNC BUTTONS (UPDATED) -->
+            <div style="margin-top: 20px; text-align: center; background-color: #03a9f4; padding: 10px; border-radius: 8px;">
+                <h3 style="margin-top: 0; color: white;">POLLING SYNC CONTROLS</h3>
+                <p style="color: white;">The game automatically checks for updates every 2 seconds. Use these buttons to force an immediate update:</p>
+                <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 10px;">
+                    <button id="refresh-button" style="background-color: #0277bd; font-size: 18px; padding: 12px 24px;">
+                        <span style="font-weight: bold;">↻</span> REFRESH GAME STATE
+                    </button>
+                </div>
                 <div style="display: flex; justify-content: center; gap: 10px;">
-                    <button id="sync-send-button" style="background-color: #d32f2f;">SEND MY STATE</button>
-                    <button id="sync-get-button" style="background-color: #d32f2f;">GET LATEST STATE</button>
+                    <button id="sync-send-button" style="background-color: #0277bd;">SAVE MY STATE</button>
+                    <button id="sync-get-button" style="background-color: #0277bd;">FORCE FETCH</button>
                 </div>
             </div>
             
@@ -688,20 +693,31 @@
         
         // Add manual sync button handlers
         document.getElementById('sync-send-button').addEventListener('click', function() {
-            console.log("MANUAL: Sending game state to Firebase");
+            console.log("MANUAL: Saving current game state");
             if (typeof saveGameState === 'function') {
-                // Force a save with a random client ID to ensure it's processed
-                window.clientId = 'manual_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
                 saveGameState();
-                alert("Your game state has been sent!");
+                alert("Your game state has been saved!");
             }
         });
         
         document.getElementById('sync-get-button').addEventListener('click', function() {
-            console.log("MANUAL: Fetching latest game state from Firebase");
+            console.log("MANUAL: Forcing state fetch");
             if (typeof loadGameState === 'function') {
                 loadGameState();
                 alert("Latest game state has been fetched!");
+            }
+        });
+        
+        // New refresh button
+        document.getElementById('refresh-button').addEventListener('click', function() {
+            console.log("REFRESH: Manual refresh requested");
+            if (typeof fetchLatestState === 'function') {
+                fetchLatestState();
+                // Don't show alert to avoid excessive popups
+                this.textContent = "✓ REFRESHED";
+                setTimeout(() => {
+                    this.innerHTML = "<span style='font-weight: bold;'>↻</span> REFRESH GAME STATE";
+                }, 1500);
             }
         });
         
