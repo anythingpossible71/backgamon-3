@@ -185,9 +185,9 @@
             
             debugLog("Generated game ID:", gameId);
             
-            // Create the game URL
+            // Create the game URL - but don't include player name in URL to prevent auto-joining
             const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
-            const gameUrl = `${baseUrl}game.html?gameId=${gameId}&playerNum=1&playerName=${encodeURIComponent(playerName)}`;
+            const gameUrl = `${baseUrl}game.html?gameId=${gameId}&playerNum=1`;
             
             // Display the URL
             document.getElementById('game-url').textContent = gameUrl;
@@ -273,9 +273,15 @@
         // Go to the game
         function goToGame() {
             const gameUrl = document.getElementById('game-url').textContent;
-            if (gameUrl) {
+            const playerName = document.getElementById('player-name').value.trim();
+            
+            if (gameUrl && playerName) {
                 debugLog("Navigating to game:", gameUrl);
-                window.location.href = gameUrl;
+                // Append the player name to the URL
+                const fullGameUrl = `${gameUrl}&playerName=${encodeURIComponent(playerName)}`;
+                window.location.href = fullGameUrl;
+            } else if (!playerName) {
+                alert('Please enter your name');
             } else {
                 console.error("Game URL not found");
             }
