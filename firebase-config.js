@@ -92,8 +92,8 @@ function prepareGameDataForSaving(gameData) {
 function saveGameState() {
     const now = Date.now();
     
-    // Check if we're trying to save too frequently
-    if (now - lastUpdateTime < SAVE_THROTTLE) {
+    // Check if we're trying to save too frequently, unless it's a forced update
+    if (now - lastUpdateTime < SAVE_THROTTLE && !window.forcePlayerOneUpdate) {
         console.log("Throttling Firebase update (too frequent)");
         return;
     }
@@ -105,8 +105,8 @@ function saveGameState() {
         return;
     }
     
-    // Skip saving if already updating from Firebase
-    if (isCurrentlyUpdating) {
+    // Skip saving if already updating from Firebase, unless it's a forced update
+    if (isCurrentlyUpdating && !window.forcePlayerOneUpdate) {
         console.log("Currently updating from Firebase, save skipped");
         return;
     }
@@ -120,6 +120,9 @@ function saveGameState() {
         // Check if both players have joined
         const bothPlayersJoined = player1Name !== "Player 1" && player2Name !== "Player 2";
         
+        // Check if this is a forced update from player 2 joining
+        const isForceUpdate = window.forcePlayerOneUpdate === true;
+        
         const gameData = {
             board: board,
             whiteBar: whiteBar,
@@ -132,10 +135,14 @@ function saveGameState() {
             gameStatus: gameStatus,
             player1Name: player1Name,
             player2Name: player2Name,
-            gameStarted: bothPlayersJoined, // Only set as started when both players have joined
+            gameStarted: bothPlayersJoined || isForceUpdate, // Set as started when both players joined or forced
+            forceUpdate: isForceUpdate, // Special flag for player 1
             version: gameStateVersion,
             timestamp: firebase.database.ServerValue.TIMESTAMP
         };
+        
+        // Clear the force update flag
+        window.forcePlayerOneUpdate = false;
         
         // Use the serializer to prepare safe data
         const safeData = prepareGameDataForSaving(gameData);
@@ -326,6 +333,9 @@ function processFirebaseUpdate(gameData) {
     try {
         console.log("Processing Firebase update", gameData);
         
+        // Check for force update flag
+        const isForceUpdate = gameData.forceUpdate === true;
+        
         // Update player names and trigger UI updates immediately
         let playersChanged = false;
         
@@ -343,10 +353,12 @@ function processFirebaseUpdate(gameData) {
             playersChanged = true;
         }
         
-        // If players changed, update game state
-        if (playersChanged) {
+        // If players changed or force update, update game state
+        if (playersChanged || isForceUpdate) {
             // Check if both players have joined
-            if (player1Name !== "Player 1" && player2Name !== "Player 2") {
+            if ((player1Name !== "Player 1" && player2Name !== "Player 2") || isForceUpdate) {
+                console.log("Both players joined or force update received, updating UI");
+                
                 // Set game as started
                 gameStarted = true;
                 

@@ -465,6 +465,13 @@
             updatePlayerInfo();
             updateDiceDisplay();
             updateGameStatus();
+            
+            // Force immediate save to Firebase to notify player 1
+            if (typeof saveGameState === 'function') {
+                // Set a special flag to force player 1 UI update
+                window.forcePlayerOneUpdate = true;
+                saveGameState();
+            }
         }
         
         // Force game to start when both players have joined
