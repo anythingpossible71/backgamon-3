@@ -249,67 +249,101 @@ function listenForGameChanges(gameId) {
     console.log("Firebase listener established");
 }
 
-// Process a Firebase update safely with lock prevention
+// Process a Firebase update safely
 function processFirebaseUpdate(gameData) {
-    console.log("Processing Firebase update with data:", gameData);
+    console.log("CRITICAL: Processing Firebase update with data:", gameData);
     
     try {
-        // CRITICAL: Always update player names and game state
-        if (gameData.player1Name) {
+        // CRITICAL: Always update player info first
+        if (gameData.player1Name && gameData.player1Name !== "Player 1") {
+            console.log("Setting Player 1 name to:", gameData.player1Name);
             player1Name = gameData.player1Name;
             document.getElementById('player1-name').textContent = player1Name;
         }
-        if (gameData.player2Name) {
+        
+        if (gameData.player2Name && gameData.player2Name !== "Player 2") {
+            console.log("Setting Player 2 name to:", gameData.player2Name);
             player2Name = gameData.player2Name;
             document.getElementById('player2-name').textContent = player2Name;
         }
         
-        // Update game started state
+        // Update other game state
         if (gameData.gameStarted) {
+            console.log("Setting game started");
             gameStarted = true;
-            // Show game controls when game is started
+        }
+        
+        // Make sure game board is visible
+        if (player1Name !== "Player 1" && player2Name !== "Player 2") {
+            console.log("Both players present, ensuring board visibility");
             document.getElementById('game-controls').classList.remove('hidden');
             document.getElementById('player-join').classList.add('hidden');
         }
 
-        // CRITICAL: Always accept game state updates
+        // CRITICAL: Always update game state
         if (gameData.board) {
-            console.log("Updating board state");
-            board = JSON.parse(JSON.stringify(gameData.board)); // Deep copy
+            console.log("Updating board data");
+            // Deep copy to prevent reference issues
+            board = JSON.parse(JSON.stringify(gameData.board));
         }
+        
         if (gameData.currentPlayer) {
-            console.log("Updating current player to:", gameData.currentPlayer);
+            console.log("Setting current player to:", gameData.currentPlayer);
             currentPlayer = gameData.currentPlayer;
         }
+        
         if (gameData.dice) {
-            console.log("Updating dice to:", gameData.dice);
-            dice = [...gameData.dice];
+            console.log("Setting dice to:", gameData.dice);
+            dice = Array.isArray(gameData.dice) ? [...gameData.dice] : [];
         }
-        if (gameData.diceRolled !== undefined) {
-            console.log("Updating diceRolled to:", gameData.diceRolled);
+        
+        if (typeof gameData.diceRolled !== 'undefined') {
+            console.log("Setting diceRolled to:", gameData.diceRolled);
             diceRolled = gameData.diceRolled;
         }
+        
         if (gameData.gameStatus) {
-            console.log("Updating game status to:", gameData.gameStatus);
+            console.log("Setting game status to:", gameData.gameStatus);
             gameStatus = gameData.gameStatus;
         }
-        if (gameData.whiteBar) whiteBar = [...gameData.whiteBar];
-        if (gameData.blackBar) blackBar = [...gameData.blackBar];
-        if (gameData.whiteBearOff) whiteBearOff = [...gameData.whiteBearOff];
-        if (gameData.blackBearOff) blackBearOff = [...gameData.blackBearOff];
+        
+        if (gameData.whiteBar) whiteBar = Array.isArray(gameData.whiteBar) ? [...gameData.whiteBar] : [];
+        if (gameData.blackBar) blackBar = Array.isArray(gameData.blackBar) ? [...gameData.blackBar] : [];
+        if (gameData.whiteBearOff) whiteBearOff = Array.isArray(gameData.whiteBearOff) ? [...gameData.whiteBearOff] : [];
+        if (gameData.blackBearOff) blackBearOff = Array.isArray(gameData.blackBearOff) ? [...gameData.blackBearOff] : [];
 
-        // Force UI update
-        if (typeof updatePlayerInfo === 'function') updatePlayerInfo();
-        if (typeof updateDiceDisplay === 'function') updateDiceDisplay();
-        if (typeof updateGameStatus === 'function') updateGameStatus();
+        // ALWAYS force UI updates
+        if (typeof updatePlayerInfo === 'function') {
+            console.log("Forcing player info update");
+            updatePlayerInfo();
+        }
         
-        // Force redraw of the board
-        if (typeof redraw === 'function') redraw();
+        if (typeof updateDiceDisplay === 'function') {
+            console.log("Forcing dice display update");
+            updateDiceDisplay();
+        }
         
-        // Check if both players have joined and start game if needed
+        if (typeof updateGameStatus === 'function') {
+            console.log("Forcing game status update");
+            updateGameStatus();
+        }
+        
+        // CRITICAL: Force a redraw to update the board
+        if (typeof redraw === 'function') {
+            console.log("Forcing board redraw");
+            redraw();
+        }
+        
+        // Check for game start condition
         if (player1Name !== "Player 1" && player2Name !== "Player 2") {
-            if (typeof forceStartGame === 'function') {
-                forceStartGame();
+            console.log("Both players joined, game can start");
+            gameStarted = true;
+            
+            // Update roll button for player 1
+            if (currentPlayer === "player1" && playerRole === "player1") {
+                console.log("Enabling roll button for Player 1");
+                const rollButton = document.getElementById('roll-button');
+                if (rollButton) rollButton.disabled = false;
             }
         }
         

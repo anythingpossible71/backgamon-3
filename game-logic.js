@@ -340,98 +340,172 @@ function mouseReleased() {
 }
 
 // Game mechanics functions
-function rollDice() {
-    // Skip if already rolling or on cooldown
-    const currentTime = performance.now();
-    if (isRolling || currentTime - lastRollTime < ROLL_COOLDOWN) {
-        console.log("Roll in progress or cooldown active, ignoring request");
-        return;
-    }
-    
-    isRolling = true;
-    lastRollTime = currentTime;
+function executeMove(fromPoint, toPoint) {
+    console.log("Executing move from", fromPoint, "to", toPoint);
     
     try {
-        console.log("Roll dice called. diceRolled=", diceRolled, 
-                    "canPlayerMove=", canPlayerMove(), 
-                    "playerRole=", playerRole, 
-                    "currentPlayer=", currentPlayer);
-                    
-        if (diceRolled) {
-            console.log("Dice already rolled, ignoring");
-            isRolling = false;
-            return;
+        // Make the move
+        const checker = removeChecker(fromPoint);
+        if (!checker) {
+            console.error("No checker found at point", fromPoint);
+            return false;
         }
         
-        if (whiteBearOff && whiteBearOff.length === 15 || 
-            blackBearOff && blackBearOff.length === 15) {
-            console.log("Game already won, ignoring dice roll");
-            isRolling = false;
-            return;
+        // Add checker to new position
+        addChecker(toPoint, checker.color);
+        
+        // Find and remove the used dice value
+        const moveDistance = Math.abs(fromPoint - toPoint);
+        const diceIndex = dice.indexOf(moveDistance);
+        if (diceIndex !== -1) {
+            dice.splice(diceIndex, 1);
         }
         
-        if (!canPlayerMove()) {
-            console.log("Not your turn, ignoring dice roll");
-            isRolling = false;
-            return;
+        // Log the move details
+        console.log("Move completed: ", {
+            from: fromPoint,
+            to: toPoint,
+            color: checker.color,
+            remainingDice: [...dice]
+        });
+        
+        // Force state save immediately
+        if (typeof saveGameState === 'function') {
+            console.log("Saving game state after move");
+            saveGameState();
+            
+            // Force a second save after slight delay for reliability
+            setTimeout(() => {
+                console.log("Saving follow-up game state after move");
+                if (typeof saveGameState === 'function') {
+                    saveGameState();
+                }
+            }, 1000);
         }
         
-        console.log("Rolling dice for player:", currentPlayer);
+        // Check if all moves are done
+        if (dice.length === 0) {
+            console.log("All moves completed for this turn");
+            setTimeout(() => {
+                switchPlayer();
+            }, 1500);
+        }
         
+        // Force UI updates
+        if (typeof updatePlayerInfo === 'function') updatePlayerInfo();
+        if (typeof updateDiceDisplay === 'function') updateDiceDisplay();
+        
+        // Force redraw
+        if (typeof redraw === 'function') {
+            redraw();
+        }
+        
+        return true;
+    } catch (error) {
+        console.error("Error executing move:", error);
+        return false;
+    }
+}
+
+// Roll dice with reliable state management
+function rollDice() {
+    console.log("Rolling dice");
+    
+    // Only player whose turn it is can roll
+    if ((currentPlayer === 'player1' && playerRole !== 'player1') ||
+        (currentPlayer === 'player2' && playerRole !== 'player2')) {
+        console.log("Not your turn to roll");
+        return false;
+    }
+    
+    try {
+        // Generate two random dice values
         const die1 = Math.floor(Math.random() * 6) + 1;
         const die2 = Math.floor(Math.random() * 6) + 1;
         
+        // If doubles, player gets 4 moves
         if (die1 === die2) {
-            // For doubles, we get 4 moves
             dice = [die1, die1, die1, die1];
+            console.log("Rolled doubles:", die1);
         } else {
             dice = [die1, die2];
+            console.log("Rolled:", die1, die2);
         }
         
+        // Update dice state
         diceRolled = true;
         
-        // Update the dice display directly
-        const dice1El = document.getElementById('dice1');
-        const dice2El = document.getElementById('dice2');
+        // Update button state
         const rollButton = document.getElementById('roll-button');
+        if (rollButton) {
+            rollButton.disabled = true;
+        }
         
-        if (dice1El) dice1El.textContent = die1;
-        if (dice2El) dice2El.textContent = die2;
-        if (rollButton) rollButton.disabled = true;
+        // Update game status
+        gameStatus = (currentPlayer === 'player1' ? player1Name : player2Name) + 
+                    " rolled " + dice.join(", ");
         
-        gameStatus = currentPlayer === 'player1' ? 
-            player1Name + " rolled " + die1 + " and " + die2 + "!" :
-            player2Name + " rolled " + die1 + " and " + die2 + "!";
-        
-        const gameStatusEl = document.getElementById('game-status');
-        if (gameStatusEl) gameStatusEl.textContent = gameStatus;
-        
-        // Use a timeout to check for legal moves after UI updates
-        setTimeout(() => {
-            try {
-                // Check if there are legal moves
-                if (!hasLegalMoves()) {
-                    gameStatus = "No legal moves available. Switching players...";
-                    
-                    if (gameStatusEl) gameStatusEl.textContent = gameStatus;
-                    
-                    // Auto switch player after short delay
-                    setTimeout(() => {
-                        switchPlayer();
-                    }, 2000);
-                } else {
-                    // Save game state after rolling
-                    saveGameStateThrottled();
+        // Force save immediately
+        if (typeof saveGameState === 'function') {
+            console.log("Saving game state after dice roll");
+            saveGameState();
+            
+            // Force a second save after slight delay
+            setTimeout(() => {
+                if (typeof saveGameState === 'function') {
+                    saveGameState();
                 }
-            } catch (error) {
-                console.error("Error checking for legal moves:", error);
-            } finally {
-                isRolling = false;
-            }
-        }, 500);
+            }, 1000);
+        }
+        
+        // Force UI updates
+        if (typeof updatePlayerInfo === 'function') updatePlayerInfo();
+        if (typeof updateDiceDisplay === 'function') updateDiceDisplay();
+        if (typeof updateGameStatus === 'function') updateGameStatus();
+        
+        return true;
     } catch (error) {
-        console.error("Error in rollDice:", error);
-        isRolling = false;
+        console.error("Error rolling dice:", error);
+        return false;
+    }
+}
+
+function switchPlayer() {
+    console.log("Switching player");
+    
+    // Clear dice
+    dice = [];
+    diceRolled = false;
+    
+    // Switch player
+    currentPlayer = (currentPlayer === 'player1') ? 'player2' : 'player1';
+    
+    // Update game status
+    gameStatus = (currentPlayer === 'player1' ? player1Name : player2Name) + "'s turn to roll";
+    
+    // Update UI
+    if (typeof updatePlayerInfo === 'function') updatePlayerInfo();
+    if (typeof updateDiceDisplay === 'function') updateDiceDisplay();
+    if (typeof updateGameStatus === 'function') updateGameStatus();
+    
+    // Enable roll button for current player
+    const rollButton = document.getElementById('roll-button');
+    if (rollButton) {
+        rollButton.disabled = (playerRole !== currentPlayer);
+    }
+    
+    // Force save immediately
+    if (typeof saveGameState === 'function') {
+        console.log("Saving game state after player switch");
+        saveGameState();
+        
+        // Force a second save after slight delay
+        setTimeout(() => {
+            console.log("Saving follow-up game state after player switch");
+            if (typeof saveGameState === 'function') {
+                saveGameState();
+            }
+        }, 1000);
     }
 }
 
@@ -450,37 +524,6 @@ function saveGameStateThrottled() {
 }
 
 // game-logic.js (Part 3) - Game state functions
-
-function switchPlayer() {
-    console.log("Switching players");
-    
-    // Clear dice
-    dice = [];
-    diceRolled = false;
-    
-    // Switch current player
-    currentPlayer = (currentPlayer === 'player1') ? 'player2' : 'player1';
-    
-    // Update game status
-    gameStatus = (currentPlayer === 'player1' ? player1Name : player2Name) + "'s turn to roll";
-    
-    // CRITICAL: Force immediate save after player switch
-    if (typeof saveGameState === 'function') {
-        console.log("Forcing immediate save after player switch");
-        saveGameState();
-        
-        // Double-check save after a short delay
-        setTimeout(() => {
-            console.log("Verifying player switch was saved...");
-            saveGameState();
-        }, 500);
-    }
-    
-    // Update UI
-    if (typeof updatePlayerInfo === 'function') updatePlayerInfo();
-    if (typeof updateDiceDisplay === 'function') updateDiceDisplay();
-    if (typeof updateGameStatus === 'function') updateGameStatus();
-}
 
 function calculateValidMoves(pointIndex, dice) {
     try {
