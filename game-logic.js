@@ -21,6 +21,11 @@ let forceSyncQueue = [];
 let lastSyncTime = 0;
 const SYNC_INTERVAL = 500; // 500ms between forced syncs
 
+// CRITICAL FIX: Add move locking to prevent reversion
+let lockedMoves = [];
+let lastBoardState = null;
+let moveReversionTimeout = null;
+
 // Add turn acknowledgment system
 let turnAcknowledged = false;
 let lastTurnTimestamp = 0;
@@ -1262,6 +1267,208 @@ function forceSyncNow() {
     saveGameStateWithVerification();
 }
 
+// CRITICAL FIX: Function to lock the current board state after a move
+function lockCurrentBoardState(reason) {
+    console.log("MOVE LOCK: Locking current board state", reason);
+    
+    // Create a deep copy of the current board
+    const boardCopy = [];
+    if (Array.isArray(window.board)) {
+        for (let i = 0; i < window.board.length; i++) {
+            boardCopy[i] = [];
+            if (Array.isArray(window.board[i])) {
+                for (let j = 0; j < window.board[i].length; j++) {
+                    if (window.board[i][j] && window.board[i][j].color) {
+                        boardCopy[i][j] = { color: window.board[i][j].color };
+                    }
+                }
+            }
+        }
+    }
+    
+    // Create deep copies of other game state
+    const whiteBarCopy = Array.isArray(window.whiteBar) ? 
+        window.whiteBar.map(checker => ({ color: checker.color })) : [];
+        
+    const blackBarCopy = Array.isArray(window.blackBar) ? 
+        window.blackBar.map(checker => ({ color: checker.color })) : [];
+        
+    const whiteBearOffCopy = Array.isArray(window.whiteBearOff) ? 
+        window.whiteBearOff.map(checker => ({ color: checker.color })) : [];
+        
+    const blackBearOffCopy = Array.isArray(window.blackBearOff) ? 
+        window.blackBearOff.map(checker => ({ color: checker.color })) : [];
+    
+    // Store the locked state
+    lastBoardState = {
+        board: boardCopy,
+        whiteBar: whiteBarCopy,
+        blackBar: blackBarCopy,
+        whiteBearOff: whiteBearOffCopy,
+        blackBearOff: blackBearOffCopy,
+        currentPlayer: window.currentPlayer,
+        dice: [...window.dice],
+        timestamp: Date.now(),
+        reason: reason
+    };
+    
+    // Set up reversion prevention
+    if (moveReversionTimeout) {
+        clearTimeout(moveReversionTimeout);
+    }
+    
+    moveReversionTimeout = setTimeout(checkForReversion, 1000);
+}
+
+// CRITICAL FIX: Function to check if the board has reverted and fix it
+function checkForReversion() {
+    if (!lastBoardState) return;
+    
+    console.log("MOVE LOCK: Checking for reversion");
+    
+    // Check if the board has reverted
+    let hasReverted = false;
+    
+    // Compare board states
+    if (Array.isArray(window.board) && Array.isArray(lastBoardState.board)) {
+        for (let i = 0; i < Math.min(window.board.length, lastBoardState.board.length); i++) {
+            const currentPoint = window.board[i];
+            const lockedPoint = lastBoardState.board[i];
+            
+            if (currentPoint.length !== lockedPoint.length) {
+                hasReverted = true;
+                break;
+            }
+            
+            for (let j = 0; j < currentPoint.length; j++) {
+                if (currentPoint[j].color !== lockedPoint[j].color) {
+                    hasReverted = true;
+                    break;
+                }
+            }
+            
+            if (hasReverted) break;
+        }
+    }
+    
+    // Also check bars and bear-offs
+    if (!hasReverted) {
+        if (window.whiteBar.length !== lastBoardState.whiteBar.length ||
+            window.blackBar.length !== lastBoardState.blackBar.length ||
+            window.whiteBearOff.length !== lastBoardState.whiteBearOff.length ||
+            window.blackBearOff.length !== lastBoardState.blackBearOff.length) {
+            hasReverted = true;
+        }
+    }
+    
+    // If the board has reverted, restore it
+    if (hasReverted) {
+        console.log("MOVE LOCK: Board has reverted, restoring locked state");
+        
+        // Restore the board
+        window.board = lastBoardState.board;
+        window.whiteBar = lastBoardState.whiteBar;
+        window.blackBar = lastBoardState.blackBar;
+        window.whiteBearOff = lastBoardState.whiteBearOff;
+        window.blackBearOff = lastBoardState.blackBearOff;
+        window.currentPlayer = lastBoardState.currentPlayer;
+        window.dice = [...lastBoardState.dice];
+        
+        // Force a redraw
+        if (typeof redrawBoard === 'function') {
+            redrawBoard();
+        }
+        
+        // Force a save to Firebase
+        window.forcePlayerOneUpdate = true;
+        window.debugButtonClicked = true;
+        forceSyncNow();
+        
+        // Schedule another check
+        moveReversionTimeout = setTimeout(checkForReversion, 1000);
+    } else {
+        console.log("MOVE LOCK: No reversion detected");
+        
+        // Schedule another check just to be safe
+        moveReversionTimeout = setTimeout(checkForReversion, 1000);
+    }
+}
+
+// CRITICAL FIX: Override executeMove to lock the board state after a move
+const originalExecuteMove = window.executeMove || function() {};
+window.executeMove = function(fromPoint, toPoint) {
+    const result = originalExecuteMove.apply(this, arguments);
+    
+    if (result) {
+        console.log("Move executed, locking board state");
+        lockCurrentBoardState("move_executed");
+        
+        // Also force a sync
+        window.forcePlayerOneUpdate = true;
+        window.debugButtonClicked = true;
+        forceSyncNow();
+    }
+    
+    return result;
+};
+
+// CRITICAL FIX: Override rollDice to lock the board state after rolling
+const originalRollDice = window.rollDice || function() {};
+window.rollDice = function() {
+    const result = originalRollDice.apply(this, arguments);
+    
+    console.log("Dice rolled, locking board state");
+    lockCurrentBoardState("dice_rolled");
+    
+    // Also force a sync
+    window.forcePlayerOneUpdate = true;
+    window.debugButtonClicked = true;
+    forceSyncNow();
+    
+    return result;
+};
+
+// CRITICAL FIX: Override switchPlayer to lock the board state after switching
+const originalSwitchPlayer = window.switchPlayer || function() {};
+window.switchPlayer = function() {
+    const result = originalSwitchPlayer.apply(this, arguments);
+    
+    console.log("Player switched, locking board state");
+    lockCurrentBoardState("player_switched");
+    
+    // Also force a sync
+    window.forcePlayerOneUpdate = true;
+    window.debugButtonClicked = true;
+    forceSyncNow();
+    
+    return result;
+};
+
+// BREAKTHROUGH: Process the sync queue periodically
+function processForceSyncQueue() {
+    if (forceSyncQueue.length > 0 && !isSyncing && Date.now() - lastSyncTime > SYNC_INTERVAL) {
+        isSyncing = true;
+        lastSyncTime = Date.now();
+        
+        const syncItem = forceSyncQueue.shift();
+        console.log("FORCE SYNC: Processing queued sync", syncItem);
+        
+        // Always set force update flag to true for queued syncs
+        window.forcePlayerOneUpdate = true;
+        window.debugButtonClicked = true; // This flag seems to help with synchronization
+        
+        // Call save with verification
+        saveGameStateWithVerification(() => {
+            isSyncing = false;
+            // Process next item in queue if available
+            setTimeout(processForceSyncQueue, 100);
+        });
+    }
+}
+
+// Set up periodic processing of the sync queue
+setInterval(processForceSyncQueue, 200);
+
 // BREAKTHROUGH: Enhanced save with verification
 function saveGameStateWithVerification(callback) {
     if (typeof saveGameState !== 'function') {
@@ -1349,40 +1556,3 @@ function queueForceSync(reason) {
     // Process immediately if possible
     processForceSyncQueue();
 }
-
-// BREAKTHROUGH: Process the sync queue periodically
-function processForceSyncQueue() {
-    if (forceSyncQueue.length > 0 && !isSyncing && Date.now() - lastSyncTime > SYNC_INTERVAL) {
-        isSyncing = true;
-        lastSyncTime = Date.now();
-        
-        const syncItem = forceSyncQueue.shift();
-        console.log("FORCE SYNC: Processing queued sync", syncItem);
-        
-        // Always set force update flag to true for queued syncs
-        window.forcePlayerOneUpdate = true;
-        window.debugButtonClicked = true; // This flag seems to help with synchronization
-        
-        // Call save with verification
-        saveGameStateWithVerification(() => {
-            isSyncing = false;
-            // Process next item in queue if available
-            setTimeout(processForceSyncQueue, 100);
-        });
-    }
-}
-
-// Set up periodic processing of the sync queue
-setInterval(processForceSyncQueue, 200);
-
-// BREAKTHROUGH: Call simulateDebugButtonClick after critical game actions
-// Add hooks to critical functions
-const originalExecuteMove = window.executeMove || function() {};
-window.executeMove = function(fromPoint, toPoint) {
-    const result = originalExecuteMove(fromPoint, toPoint);
-    if (result) {
-        console.log("Move executed, simulating debug button click");
-        simulateDebugButtonClick();
-    }
-    return result;
-};

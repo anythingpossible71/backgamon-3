@@ -333,6 +333,9 @@ function processFirebaseUpdate(gameData) {
             version: gameData.gameStateVersion
         });
         
+        // CRITICAL FIX: Check if we have a locked board state that should be preserved
+        const hasLockedState = window.lastBoardState && Date.now() - window.lastBoardState.timestamp < 5000;
+        
         // Update player names and game status immediately
         if (gameData.player1Name) window.player1Name = gameData.player1Name;
         if (gameData.player2Name) window.player2Name = gameData.player2Name;
@@ -348,15 +351,23 @@ function processFirebaseUpdate(gameData) {
         const isForceUpdate = gameData.forceUpdate === true;
         const isDebugButtonClicked = gameData.debugButtonClicked === true;
         
-        // Always update these game state variables
-        if (Array.isArray(gameData.board)) window.board = gameData.board;
-        if (Array.isArray(gameData.whiteBar)) window.whiteBar = gameData.whiteBar;
-        if (Array.isArray(gameData.blackBar)) window.blackBar = gameData.blackBar;
-        if (Array.isArray(gameData.whiteBearOff)) window.whiteBearOff = gameData.whiteBearOff;
-        if (Array.isArray(gameData.blackBearOff)) window.blackBearOff = gameData.blackBearOff;
-        if (typeof gameData.currentPlayer !== 'undefined') window.currentPlayer = gameData.currentPlayer;
-        if (Array.isArray(gameData.dice)) window.dice = gameData.dice;
-        if (typeof gameData.diceRolled !== 'undefined') window.diceRolled = gameData.diceRolled;
+        // CRITICAL FIX: Only update the board if we don't have a locked state
+        // or if the update is from the other player
+        if (!hasLockedState || isFromOtherPlayer) {
+            console.log("UPDATE: Updating board state from Firebase");
+            
+            // Always update these game state variables
+            if (Array.isArray(gameData.board)) window.board = gameData.board;
+            if (Array.isArray(gameData.whiteBar)) window.whiteBar = gameData.whiteBar;
+            if (Array.isArray(gameData.blackBar)) window.blackBar = gameData.blackBar;
+            if (Array.isArray(gameData.whiteBearOff)) window.whiteBearOff = gameData.whiteBearOff;
+            if (Array.isArray(gameData.blackBearOff)) window.blackBearOff = gameData.blackBearOff;
+            if (typeof gameData.currentPlayer !== 'undefined') window.currentPlayer = gameData.currentPlayer;
+            if (Array.isArray(gameData.dice)) window.dice = gameData.dice;
+            if (typeof gameData.diceRolled !== 'undefined') window.diceRolled = gameData.diceRolled;
+        } else {
+            console.log("UPDATE: Ignoring board update due to locked state");
+        }
         
         // Update UI directly
         if (typeof updateDiceDisplay === 'function') updateDiceDisplay();
@@ -384,6 +395,12 @@ function processFirebaseUpdate(gameData) {
                 console.log("UPDATE: Both players have joined, checking if game can start");
                 checkAndStartGame();
             }
+        }
+        
+        // CRITICAL FIX: If we have a locked state, check if we need to restore it
+        if (hasLockedState && typeof window.checkForReversion === 'function') {
+            console.log("UPDATE: Checking for reversion after Firebase update");
+            window.checkForReversion();
         }
         
         // Clear the safety timeout and release the lock

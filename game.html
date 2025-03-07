@@ -921,6 +921,16 @@
             // This allows our new synchronization system to work properly
         }
         
+        // CRITICAL FIX: Add continuous reversion check
+        console.log("CRITICAL FIX: Setting up continuous reversion check");
+        
+        // Set up a continuous check for move reversion
+        setInterval(function() {
+            if (typeof window.checkForReversion === 'function') {
+                window.checkForReversion();
+            }
+        }, 1000); // Check every second
+        
         console.log("Performance improvements loaded");
     });
     </script>
