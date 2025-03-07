@@ -655,6 +655,34 @@ function debugBoard() {
     console.log("=======================");
 }
 
+// Function to force redraw of the board
+function redrawBoard() {
+    try {
+        console.log("Forcing board redraw");
+        
+        // Clear the canvas
+        clear();
+        
+        // Redraw the board
+        drawBoard();
+        
+        // Redraw all checkers
+        drawCheckers();
+        
+        // Redraw valid moves if a checker is selected
+        if (selectedChecker && validMoves.length > 0) {
+            drawValidMoves();
+        }
+        
+        console.log("Board redraw complete");
+    } catch (error) {
+        console.error("Error in redrawBoard:", error);
+    }
+}
+
+// Export the redrawBoard function to the global scope
+window.redrawBoard = redrawBoard;
+
 // Make these functions globally accessible
 window.initializeBoard = initializeBoard;
 window.drawBoard = drawBoard;

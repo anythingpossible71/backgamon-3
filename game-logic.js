@@ -853,6 +853,12 @@ function monitorTurnTimeout() {
 function executeMove() {
     if (!selectedChecker) return;
     
+    // Ensure we have a valid gameId
+    if (!window.gameId) {
+        console.error("No gameId found, cannot execute move");
+        return;
+    }
+    
     // Check for win condition
     if ((whiteBearOff && whiteBearOff.length === 15) || 
         (blackBearOff && blackBearOff.length === 15)) {
@@ -911,7 +917,8 @@ function executeMove() {
                     
                     console.log("White wins the game!");
                     // Save final game state
-                    saveGameStateThrottled();
+                    window.forcePlayerOneUpdate = true;
+                    saveGameState();
                     break;
                 } else {
                     gameStatus = 'White checker borne off!';
@@ -931,7 +938,8 @@ function executeMove() {
                     
                     console.log("Black wins the game!");
                     // Save final game state
-                    saveGameStateThrottled();
+                    window.forcePlayerOneUpdate = true;
+                    saveGameState();
                     break;
                 } else {
                     gameStatus = 'Black checker borne off!';
@@ -1063,7 +1071,18 @@ function executeMove() {
         
         // Force immediate save to ensure move is synchronized
         window.forcePlayerOneUpdate = true;
-        saveGameState();
+        
+        // Direct Firebase save without throttling
+        if (typeof window.saveGameState === 'function') {
+            console.log("Forcing immediate save after move");
+            window.saveGameState();
+            
+            // Double-check save with a slight delay
+            setTimeout(() => {
+                console.log("Double-checking save after move");
+                window.saveGameState();
+            }, 500);
+        }
         
         // Check win condition
         if ((playerColor === 'white' && whiteBearOff.length === 15) ||

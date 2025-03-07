@@ -101,7 +101,7 @@ function saveGameState() {
     lastUpdateTime = now;
     
     if (!gameId) {
-        console.log("No game ID, cannot save state");
+        console.log("No gameId found, cannot save state");
         return;
     }
     
@@ -123,6 +123,9 @@ function saveGameState() {
         // Check if this is a forced update from player 2 joining
         const isForceUpdate = window.forcePlayerOneUpdate === true;
         
+        // Debug the board state before saving
+        console.log("Board state before saving:", JSON.stringify(board));
+        
         const gameData = {
             board: board,
             whiteBar: whiteBar,
@@ -138,7 +141,8 @@ function saveGameState() {
             gameStarted: bothPlayersJoined || isForceUpdate, // Set as started when both players joined or forced
             forceUpdate: isForceUpdate, // Special flag for player 1
             version: gameStateVersion,
-            timestamp: firebase.database.ServerValue.TIMESTAMP
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            lastMoveBy: playerRole // Add who made the last move
         };
         
         // Clear the force update flag
@@ -147,12 +151,16 @@ function saveGameState() {
         // Use the serializer to prepare safe data
         const safeData = prepareGameDataForSaving(gameData);
         
+        // Debug the safe data
+        console.log("Safe data prepared for Firebase:", JSON.stringify(safeData.board));
+        
         // Update local timestamp expectation
         localGameTimestamp = now;
         
         console.log("Saving data to Firebase");
         
-        firebase.database().ref('games/' + gameId).update(safeData)
+        // Use set instead of update to ensure complete replacement
+        firebase.database().ref('games/' + gameId).set(safeData)
             .then(() => {
                 console.log("Game state saved successfully, version:", gameStateVersion);
                 
@@ -336,6 +344,9 @@ function processFirebaseUpdate(gameData) {
         // Check for force update flag
         const isForceUpdate = gameData.forceUpdate === true;
         
+        // Check if this update is from the other player
+        const isFromOtherPlayer = gameData.lastMoveBy && gameData.lastMoveBy !== playerRole;
+        
         // Update player names and trigger UI updates immediately
         let playersChanged = false;
         
@@ -385,14 +396,54 @@ function processFirebaseUpdate(gameData) {
         }
         
         // Always update game state variables to ensure synchronization
+        // Pay special attention to board updates from other players
         if (gameData.board) {
-            console.log("Updating board from Firebase");
-            board = gameData.board;
+            console.log("Updating board from Firebase, from other player:", isFromOtherPlayer);
+            console.log("Board data received:", JSON.stringify(gameData.board));
+            
+            // Deep copy the board to avoid reference issues
+            board = [];
+            for (let i = 0; i < gameData.board.length; i++) {
+                board[i] = [];
+                if (gameData.board[i] && gameData.board[i].length > 0) {
+                    for (let j = 0; j < gameData.board[i].length; j++) {
+                        if (gameData.board[i][j] && gameData.board[i][j].color) {
+                            board[i].push({ color: gameData.board[i][j].color });
+                        }
+                    }
+                }
+            }
         }
-        if (gameData.whiteBar) whiteBar = gameData.whiteBar;
-        if (gameData.blackBar) blackBar = gameData.blackBar;
-        if (gameData.whiteBearOff) whiteBearOff = gameData.whiteBearOff;
-        if (gameData.blackBearOff) blackBearOff = gameData.blackBearOff;
+        
+        // Update other game state variables
+        if (gameData.whiteBar) {
+            whiteBar = [];
+            for (let i = 0; i < gameData.whiteBar.length; i++) {
+                whiteBar.push({ color: 'white' });
+            }
+        }
+        
+        if (gameData.blackBar) {
+            blackBar = [];
+            for (let i = 0; i < gameData.blackBar.length; i++) {
+                blackBar.push({ color: 'black' });
+            }
+        }
+        
+        if (gameData.whiteBearOff) {
+            whiteBearOff = [];
+            for (let i = 0; i < gameData.whiteBearOff.length; i++) {
+                whiteBearOff.push({ color: 'white' });
+            }
+        }
+        
+        if (gameData.blackBearOff) {
+            blackBearOff = [];
+            for (let i = 0; i < gameData.blackBearOff.length; i++) {
+                blackBearOff.push({ color: 'black' });
+            }
+        }
+        
         if (gameData.currentPlayer) currentPlayer = gameData.currentPlayer;
         if (gameData.dice) dice = gameData.dice;
         if (gameData.diceRolled !== undefined) diceRolled = gameData.diceRolled;
@@ -402,6 +453,12 @@ function processFirebaseUpdate(gameData) {
         // Update UI directly
         if (typeof updateUIDirectly === 'function') {
             updateUIDirectly();
+        }
+        
+        // If this was a move from the other player, redraw the board
+        if (isFromOtherPlayer && typeof redrawBoard === 'function') {
+            console.log("Redrawing board after other player's move");
+            redrawBoard();
         }
         
     } catch (error) {
