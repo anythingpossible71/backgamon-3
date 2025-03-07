@@ -10,6 +10,12 @@ const ROLL_COOLDOWN = 1000; // 1 second between rolls
 const SAVE_COOLDOWN = 2000; // 2 seconds between saves
 const MOUSE_COOLDOWN = 100; // 100ms between mouse events
 
+// Add global variables for move locking mechanism
+let isMoveLocked = false;
+let lockedBoardState = null;
+let lockTimeout = null;
+const LOCK_DURATION = 10000; // 10 seconds lock to prevent reversion
+
 // Mouse interaction functions with throttling
 function mousePressed() {
     // Throttle to prevent rapid clicks
@@ -344,10 +350,14 @@ function executeMove(fromPoint, toPoint) {
     console.log("Executing move from", fromPoint, "to", toPoint);
     
     try {
+        // CRITICAL: Lock moves to prevent reversion
+        isMoveLocked = true;
+        
         // Make the move
         const checker = removeChecker(fromPoint);
         if (!checker) {
             console.error("No checker found at point", fromPoint);
+            isMoveLocked = false;
             return false;
         }
         
@@ -369,18 +379,49 @@ function executeMove(fromPoint, toPoint) {
             remainingDice: [...dice]
         });
         
-        // Force state save immediately
+        // CRITICAL: Create a deep copy of the board state for lock protection
+        lockedBoardState = {
+            board: JSON.parse(JSON.stringify(board)),
+            whiteBar: [...whiteBar],
+            blackBar: [...blackBar],
+            whiteBearOff: [...whiteBearOff],
+            blackBearOff: [...blackBearOff],
+            dice: [...dice],
+            diceRolled: diceRolled,
+            currentPlayer: currentPlayer
+        };
+        
+        // Clear previous lock timeout if exists
+        if (lockTimeout) {
+            clearTimeout(lockTimeout);
+        }
+        
+        // Set a timeout to release the lock after LOCK_DURATION
+        lockTimeout = setTimeout(() => {
+            console.log("Move lock released after timeout");
+            isMoveLocked = false;
+            lockedBoardState = null;
+        }, LOCK_DURATION);
+        
+        // Force state save immediately, THREE times for reliability
         if (typeof saveGameState === 'function') {
-            console.log("Saving game state after move");
+            console.log("Saving game state after move (1st attempt)");
             saveGameState();
             
-            // Force a second save after slight delay for reliability
+            // Force additional saves after slight delays for reliability
             setTimeout(() => {
-                console.log("Saving follow-up game state after move");
+                console.log("Saving game state after move (2nd attempt)");
                 if (typeof saveGameState === 'function') {
                     saveGameState();
                 }
-            }, 1000);
+            }, 500);
+            
+            setTimeout(() => {
+                console.log("Saving game state after move (3rd attempt)");
+                if (typeof saveGameState === 'function') {
+                    saveGameState();
+                }
+            }, 1500);
         }
         
         // Check if all moves are done
@@ -403,9 +444,54 @@ function executeMove(fromPoint, toPoint) {
         return true;
     } catch (error) {
         console.error("Error executing move:", error);
+        isMoveLocked = false;
         return false;
     }
 }
+
+// Function to check if the board has been reverted and restore it
+function checkAndRestoreBoardState() {
+    if (isMoveLocked && lockedBoardState) {
+        // Check if current board state differs from locked state
+        let hasChanged = false;
+        
+        // Compare board arrays (simplified for demonstration)
+        if (JSON.stringify(board) !== JSON.stringify(lockedBoardState.board)) {
+            hasChanged = true;
+        }
+        
+        if (hasChanged) {
+            console.log("CRITICAL: Detected move reversion, restoring locked state!");
+            
+            // Restore the board state
+            board = JSON.parse(JSON.stringify(lockedBoardState.board));
+            whiteBar = [...lockedBoardState.whiteBar];
+            blackBar = [...lockedBoardState.blackBar];
+            whiteBearOff = [...lockedBoardState.whiteBearOff];
+            blackBearOff = [...lockedBoardState.blackBearOff];
+            dice = [...lockedBoardState.dice];
+            diceRolled = lockedBoardState.diceRolled;
+            currentPlayer = lockedBoardState.currentPlayer;
+            
+            // Force UI updates
+            if (typeof updatePlayerInfo === 'function') updatePlayerInfo();
+            if (typeof updateDiceDisplay === 'function') updateDiceDisplay();
+            
+            // Force redraw
+            if (typeof redraw === 'function') {
+                redraw();
+            }
+            
+            // Force save to Firebase to update all clients
+            if (typeof saveGameState === 'function') {
+                saveGameState();
+            }
+        }
+    }
+}
+
+// Setup periodic check for board reversion
+setInterval(checkAndRestoreBoardState, 1000); // Check every 1 second
 
 // Roll dice with reliable state management
 function rollDice() {
@@ -419,6 +505,9 @@ function rollDice() {
     }
     
     try {
+        // Lock the dice roll
+        isMoveLocked = true;
+        
         // Generate two random dice values
         const die1 = Math.floor(Math.random() * 6) + 1;
         const die2 = Math.floor(Math.random() * 6) + 1;
@@ -435,6 +524,30 @@ function rollDice() {
         // Update dice state
         diceRolled = true;
         
+        // Store the locked state after rolling
+        lockedBoardState = {
+            board: JSON.parse(JSON.stringify(board)),
+            whiteBar: [...whiteBar],
+            blackBar: [...blackBar],
+            whiteBearOff: [...whiteBearOff],
+            blackBearOff: [...blackBearOff],
+            dice: [...dice],
+            diceRolled: diceRolled,
+            currentPlayer: currentPlayer
+        };
+        
+        // Clear previous lock timeout if exists
+        if (lockTimeout) {
+            clearTimeout(lockTimeout);
+        }
+        
+        // Set a timeout to release the lock after LOCK_DURATION
+        lockTimeout = setTimeout(() => {
+            console.log("Dice roll lock released after timeout");
+            isMoveLocked = false;
+            lockedBoardState = null;
+        }, LOCK_DURATION);
+        
         // Update button state
         const rollButton = document.getElementById('roll-button');
         if (rollButton) {
@@ -445,17 +558,24 @@ function rollDice() {
         gameStatus = (currentPlayer === 'player1' ? player1Name : player2Name) + 
                     " rolled " + dice.join(", ");
         
-        // Force save immediately
+        // Force save immediately, THREE times for reliability
         if (typeof saveGameState === 'function') {
-            console.log("Saving game state after dice roll");
+            console.log("Saving game state after dice roll (1st attempt)");
             saveGameState();
             
-            // Force a second save after slight delay
             setTimeout(() => {
+                console.log("Saving game state after dice roll (2nd attempt)");
                 if (typeof saveGameState === 'function') {
                     saveGameState();
                 }
-            }, 1000);
+            }, 500);
+            
+            setTimeout(() => {
+                console.log("Saving game state after dice roll (3rd attempt)");
+                if (typeof saveGameState === 'function') {
+                    saveGameState();
+                }
+            }, 1500);
         }
         
         // Force UI updates
@@ -466,6 +586,7 @@ function rollDice() {
         return true;
     } catch (error) {
         console.error("Error rolling dice:", error);
+        isMoveLocked = false;
         return false;
     }
 }
