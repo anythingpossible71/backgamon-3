@@ -1235,3 +1235,23 @@ addMouseListeners();
 
 // Log that the game logic has been loaded
 console.log("Game logic loaded successfully");
+
+// Function to display the version name on the screen
+function displayVersionName() {
+    const versionName = "Version 1.0.0"; // Update this as needed
+    const versionElement = document.createElement('div');
+    versionElement.id = 'version-name';
+    versionElement.style.position = 'absolute';
+    versionElement.style.bottom = '10px';
+    versionElement.style.right = '10px';
+    versionElement.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    versionElement.style.color = 'white';
+    versionElement.style.padding = '5px 10px';
+    versionElement.style.borderRadius = '5px';
+    versionElement.style.zIndex = '1000';
+    versionElement.textContent = versionName;
+    document.body.appendChild(versionElement);
+}
+
+// Call the function to display the version name
+window.addEventListener('DOMContentLoaded', displayVersionName);

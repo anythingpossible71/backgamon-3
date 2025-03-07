@@ -121,6 +121,20 @@
             font-size: 12px;
             display: none;
         }
+        /* Version Display Styles */
+        #version-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: #007bff;
+            color: white;
+            text-align: center;
+            padding: 5px 0;
+            font-weight: bold;
+            z-index: 9999;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
     </style>
     
     <!-- IMPORTANT: Global variables to avoid redeclaration conflicts -->
@@ -179,6 +193,11 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
 <body>
+    <!-- Version Banner - Always Visible -->
+    <div id="version-banner">
+        BACKGAMMON VERSION 2.0.0 (ANTI-REVERSION FIX)
+    </div>
+    
     <div id="game-container">
         <div id="player-join">
             <h2 id="join-title">Join Backgammon Game</h2>
