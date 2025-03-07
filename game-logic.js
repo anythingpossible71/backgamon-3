@@ -539,37 +539,63 @@ function rollDice() {
     
     diceRolled = true;
     
-    // EXTRA SYNC: Force multiple saves after dice roll
-    if (typeof saveGameState === 'function') {
-        console.log("EXTRA SYNC: Saving after dice roll (1)");
+    // Update game status
+    gameStatus = currentPlayer === 'player1' ? 
+        player1Name + " rolled " + dice.join(', ') + "!" :
+        player2Name + " rolled " + dice.join(', ') + "!";
+    
+    // CRITICAL FIX: IMMEDIATELY update UI
+    if (typeof updateDiceDisplay === 'function') {
+        updateDiceDisplay();
+    }
+    if (typeof updateGameStatus === 'function') {
+        updateGameStatus();
+    }
+    
+    // CRITICAL FIX: THREE-STEP SAVE PROCESS for dice rolls
+    // Step 1: Immediate save
+    console.log("DICE SYNC: Immediate save after roll");
+    saveGameState();
+    
+    // Step 2: Secondary save after short delay
+    setTimeout(() => {
+        console.log("DICE SYNC: Second save after roll");
         saveGameState();
         
-        // Additional saves with delay for reliability
-        setTimeout(() => {
-            console.log("EXTRA SYNC: Saving after dice roll (2)");
-            if (typeof saveGameState === 'function') {
-                // Generate new client ID for this save to ensure it's accepted
-                window.clientId = 'dice_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
-                saveGameState();
-            }
-        }, 300);
-        
-        setTimeout(() => {
-            console.log("EXTRA SYNC: Saving after dice roll (3)");
-            if (typeof saveGameState === 'function') {
-                // Generate new client ID for this save to ensure it's accepted
-                window.clientId = 'dice_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
-                saveGameState();
-            }
-        }, 800);
-    }
+        // Update game UI again
+        if (typeof updateDiceDisplay === 'function') {
+            updateDiceDisplay();
+        }
+    }, 500);
+    
+    // Step 3: Tertiary save after longer delay
+    setTimeout(() => {
+        console.log("DICE SYNC: Third save after roll");
+        saveGameState();
+    }, 1500);
     
     // Check if player has legal moves
     if (!hasLegalMoves()) {
-        console.log("No legal moves available, switching player");
+        console.log("No legal moves available, switching player after delay");
+        
+        // Update status about no moves
+        gameStatus = currentPlayer === 'player1' ? 
+            player1Name + " has no legal moves!" :
+            player2Name + " has no legal moves!";
+            
+        if (typeof updateGameStatus === 'function') {
+            updateGameStatus();
+        }
+        
+        // Force another save with status
+        setTimeout(() => {
+            saveGameState();
+        }, 1000);
+        
+        // Switch player after showing "no moves" message
         setTimeout(() => {
             switchPlayer();
-        }, 2000);
+        }, 3000);
     }
 }
 

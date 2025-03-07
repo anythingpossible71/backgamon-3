@@ -23,13 +23,10 @@ let lastServerTimestamp = 0;
 let isMyTurn = false;
 let pollingIntervalId = null;
 let isSaving = false;
+let lastSyncResult = "No sync yet";
 
-// Unique client ID - will be changed for manual saves
-window.clientId = 'client_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
-console.log("Initial client ID generated:", window.clientId);
-
-// Global save counter for debugging
-let saveCounter = 0;
+// CRITICAL FIX: No client IDs anymore
+console.log("===== DIRECT SYNC SOLUTION =====");
 
 // Generate a unique game ID
 function generateUniqueId() {
@@ -56,29 +53,21 @@ function hasBoardData(boardData) {
 function saveGameState() {
   console.log("SAVE: Starting save operation");
   
-  // Prevent concurrent save operations
-  if (isSaving) {
-    console.log("SAVE: Already saving, operation blocked");
-    return;
-  }
-  
-  isSaving = true;
-  
-  // Ensure we have a game ID
-  if (!gameId) {
-    console.error("SAVE: No game ID, cannot save state");
-    isSaving = false;
-    return;
-  }
-  
+  // Always save when called - no more concurrent protection
   try {
+    // Ensure we have a game ID
+    if (!gameId) {
+      console.error("SAVE: No game ID, cannot save state");
+      return;
+    }
+    
+    // Force checking board data
     if (!hasBoardData(board)) {
       console.error("SAVE: Board is empty, initializing before save");
       if (typeof initializeBoard === 'function') {
         initializeBoard();
       } else {
         console.error("SAVE: Cannot initialize board, save aborted");
-        isSaving = false;
         return;
       }
     }
@@ -116,23 +105,26 @@ function saveGameState() {
       updatedBy: playerRole
     };
     
-    console.log(`SAVE: Game data prepared, timestamp: ${timestamp}`);
+    console.log(`SAVE: Game data prepared, timestamp: ${timestamp}, dice: ${JSON.stringify(dice)}`);
     
     // Save to Firebase
     firebase.database().ref('games/' + gameId).set(gameData)
       .then(() => {
         console.log(`SAVE: Game saved successfully at ${timestamp}`);
         lastServerTimestamp = timestamp; // Update our last seen timestamp
-        isSaving = false;
+        lastSyncResult = `SAVED at ${new Date().toLocaleTimeString()}`;
+        
+        // CRITICAL FIX: Force an immediate fetch after saving to confirm
+        setTimeout(fetchLatestState, 300);
       })
       .catch((error) => {
         console.error(`SAVE: Error: ${error.message}`);
-        isSaving = false;
+        lastSyncResult = `SAVE ERROR: ${error.message}`;
       });
   }
   catch (error) {
     console.error(`SAVE: Exception: ${error.message}`);
-    isSaving = false;
+    lastSyncResult = `SAVE EXCEPTION: ${error.message}`;
   }
 }
 
@@ -145,6 +137,7 @@ function loadGameState() {
     return;
   }
   
+  lastSyncResult = "Loading game...";
   fetchLatestState();
 }
 
@@ -160,35 +153,34 @@ function fetchLatestState() {
       
       if (!gameData) {
         console.log("POLL: No game data found");
+        lastSyncResult = "No game data found";
         return;
       }
       
-      // Only process if it's newer than what we've seen before
+      console.log(`POLL: State found, timestamp: ${gameData.timestamp}, dice: ${JSON.stringify(gameData.dice)}`);
+      
+      // Process the update regardless of timestamp
+      processGameUpdate(gameData);
+      
+      // Update our last server timestamp
       if (gameData.timestamp > lastServerTimestamp) {
-        console.log(`POLL: Newer state found (${gameData.timestamp} > ${lastServerTimestamp})`);
-        processGameUpdate(gameData);
         lastServerTimestamp = gameData.timestamp;
-      } else {
-        console.log(`POLL: No newer state (${gameData.timestamp} <= ${lastServerTimestamp})`);
       }
+      
+      lastSyncResult = `POLL SUCCESS at ${new Date().toLocaleTimeString()}`;
     })
     .catch((error) => {
       console.error(`POLL: Error fetching data: ${error.message}`);
+      lastSyncResult = `POLL ERROR: ${error.message}`;
     });
 }
 
 // Process a game update
 function processGameUpdate(gameData) {
-  console.log(`PROCESS: Update from ${gameData.updatedBy} at ${gameData.timestamp}`);
-  
-  // Don't process updates from ourselves
-  if (gameData.updatedBy === playerRole && gameData.timestamp === lastServerTimestamp) {
-    console.log("PROCESS: Ignoring our own update");
-    return;
-  }
+  console.log(`PROCESS: Update from ${gameData.updatedBy} at ${gameData.timestamp}, dice: ${JSON.stringify(gameData.dice)}`);
   
   try {
-    // Always update player names
+    // Always update player names and game started
     if (gameData.player1Name) {
       player1Name = gameData.player1Name;
       document.getElementById('player1-name').textContent = player1Name;
@@ -204,34 +196,41 @@ function processGameUpdate(gameData) {
       gameStarted = true;
     }
     
-    // Check if it's other player's update or if we should accept it
-    const isOtherPlayerUpdate = gameData.updatedBy !== playerRole;
+    // CRITICAL FIX: Check if we're in the middle of our own turn
+    const isMyOwnTurn = playerRole === currentPlayer && diceRolled;
     
-    // Always update game UI visibility
-    updateGameVisibility();
-    
-    // Update actual game state - check if we should accept this update
-    if (isOtherPlayerUpdate || gameData.timestamp > lastServerTimestamp) {
-      console.log("PROCESS: Updating game state");
+    // CRITICAL: Only update if we're not in our own turn OR if the update is newer
+    if (!isMyOwnTurn || gameData.timestamp > lastServerTimestamp) {
+      console.log("PROCESS: Updating full game state");
       
-      // Update board
+      // Update all game state
+      
+      // Check if board data is valid
       if (gameData.board && hasBoardData(gameData.board)) {
         console.log("PROCESS: Updating board");
         board = JSON.parse(JSON.stringify(gameData.board));
       }
       
       // Update all other game state
-      if (gameData.currentPlayer) currentPlayer = gameData.currentPlayer;
-      if (gameData.dice) dice = Array.isArray(gameData.dice) ? [...gameData.dice] : [];
-      if (typeof gameData.diceRolled !== 'undefined') diceRolled = gameData.diceRolled;
-      
       if (gameData.whiteBar) whiteBar = Array.isArray(gameData.whiteBar) ? [...gameData.whiteBar] : [];
       if (gameData.blackBar) blackBar = Array.isArray(gameData.blackBar) ? [...gameData.blackBar] : [];
       if (gameData.whiteBearOff) whiteBearOff = Array.isArray(gameData.whiteBearOff) ? [...gameData.whiteBearOff] : [];
       if (gameData.blackBearOff) blackBearOff = Array.isArray(gameData.blackBearOff) ? [...gameData.blackBearOff] : [];
+      
+      // CRITICAL: Always update dice and current player unless we're in our own turn
+      if (!isMyOwnTurn) {
+        if (gameData.currentPlayer) currentPlayer = gameData.currentPlayer;
+        if (gameData.dice) dice = Array.isArray(gameData.dice) ? [...gameData.dice] : [];
+        if (typeof gameData.diceRolled !== 'undefined') diceRolled = gameData.diceRolled;
+      } else {
+        console.log("PROCESS: Keeping our own dice and turn status");
+      }
     } else {
-      console.log("PROCESS: Not updating game state - our data is newer");
+      console.log("PROCESS: Not updating game state - we're in the middle of our turn");
     }
+    
+    // Always update game UI visibility
+    updateGameVisibility();
     
     // Update turn status
     isMyTurn = playerRole === currentPlayer;
@@ -249,11 +248,15 @@ function processGameUpdate(gameData) {
   }
   catch (error) {
     console.error(`PROCESS: Error: ${error.message}`);
+    lastSyncResult = `PROCESS ERROR: ${error.message}`;
   }
 }
 
 // Update game display
 function updateGameUI() {
+  // Update debug info with last sync result
+  updateDebugInfo();
+  
   // Force UI updates
   if (typeof updatePlayerInfo === 'function') updatePlayerInfo();
   if (typeof updateDiceDisplay === 'function') updateDiceDisplay();
@@ -264,6 +267,22 @@ function updateGameUI() {
   
   // Update roll button state
   updateRollButton();
+}
+
+// Update debug info
+function updateDebugInfo() {
+  const debugInfo = document.getElementById('debug-info');
+  if (debugInfo && debugInfo.style.display === 'block') {
+    debugInfo.innerHTML = `
+      <strong>Game ID:</strong> ${gameId}<br>
+      <strong>Player Role:</strong> ${playerRole}<br>
+      <strong>Current Player:</strong> ${currentPlayer}<br>
+      <strong>Dice:</strong> ${JSON.stringify(dice)}<br>
+      <strong>Last Timestamp:</strong> ${lastServerTimestamp}<br>
+      <strong>Is My Turn:</strong> ${isMyTurn}<br>
+      <strong>Last Sync:</strong> ${lastSyncResult}<br>
+    `;
+  }
 }
 
 // Update roll button state
@@ -302,8 +321,8 @@ function startPolling() {
   // Stop any existing polling
   stopPolling();
   
-  // Start new polling interval
-  pollingIntervalId = setInterval(fetchLatestState, 2000); // Check every 2 seconds
+  // Start new polling interval - FASTER POLLING (1 second)
+  pollingIntervalId = setInterval(fetchLatestState, 1000); // Check every 1 second
   
   console.log("POLL: Polling mechanism started");
 }
