@@ -195,8 +195,48 @@
 <body>
     <!-- Version Banner - Always Visible -->
     <div id="version-banner">
-        BACKGAMMON VERSION 6.0.0 - POLLING SOLUTION
+        BACKGAMMON VERSION 7.0.0 - EMERGENCY NO-CACHE FIX
     </div>
+    
+    <!-- Anti-caching script -->
+    <script>
+        // CRITICAL ANTI-CACHING MEASURE
+        console.log("CACHE BUSTER: Forcing reload if cached version");
+        
+        // Store the current version in localStorage
+        const CURRENT_VERSION = "7.0.0";
+        const storedVersion = localStorage.getItem('backgammon_version');
+        
+        if (storedVersion !== CURRENT_VERSION) {
+            console.log(`CACHE BUSTER: Version mismatch! Stored: ${storedVersion}, Current: ${CURRENT_VERSION}`);
+            localStorage.setItem('backgammon_version', CURRENT_VERSION);
+            
+            // Add timestamp to force cache bust
+            const timestamp = new Date().getTime();
+            const scriptUrls = [
+                "firebase-config.js", 
+                "game-board.js", 
+                "game-logic.js", 
+                "backgammon.js"
+            ];
+            
+            // Create a fresh script tag with cache-busting parameter
+            scriptUrls.forEach(url => {
+                const oldScript = document.querySelector(`script[src^="${url}"]`);
+                if (oldScript) {
+                    oldScript.remove();
+                }
+                const newScript = document.createElement('script');
+                newScript.src = `${url}?v=${CURRENT_VERSION}&t=${timestamp}`;
+                document.body.appendChild(newScript);
+            });
+            
+            // Force reload after a short delay to apply new scripts
+            setTimeout(() => {
+                window.location.reload(true);
+            }, 1000);
+        }
+    </script>
     
     <div id="game-container">
         <div id="player-join">
