@@ -897,5 +897,338 @@
         console.log("Performance improvements loaded");
     });
     </script>
+    
+    <!-- Debug Monitoring Script -->
+    <script>
+    // Debug monitoring script to track game state changes and move persistence
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("Debug monitoring script loading...");
+        
+        // Create debug panel
+        const debugPanel = document.createElement('div');
+        debugPanel.id = 'move-debug-panel';
+        debugPanel.style.position = 'fixed';
+        debugPanel.style.bottom = '10px';
+        debugPanel.style.right = '10px';
+        debugPanel.style.width = '300px';
+        debugPanel.style.maxHeight = '400px';
+        debugPanel.style.overflowY = 'auto';
+        debugPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        debugPanel.style.color = '#00ff00';
+        debugPanel.style.padding = '10px';
+        debugPanel.style.borderRadius = '5px';
+        debugPanel.style.fontFamily = 'monospace';
+        debugPanel.style.fontSize = '12px';
+        debugPanel.style.zIndex = '9999';
+        
+        // Add toggle button
+        const toggleButton = document.createElement('button');
+        toggleButton.textContent = 'Show Move Debug';
+        toggleButton.style.position = 'fixed';
+        toggleButton.style.bottom = '10px';
+        toggleButton.style.right = '320px';
+        toggleButton.style.zIndex = '9999';
+        toggleButton.style.backgroundColor = '#333';
+        toggleButton.style.color = '#fff';
+        toggleButton.style.border = 'none';
+        toggleButton.style.padding = '5px 10px';
+        toggleButton.style.borderRadius = '3px';
+        toggleButton.style.cursor = 'pointer';
+        
+        // Add clear button
+        const clearButton = document.createElement('button');
+        clearButton.textContent = 'Clear';
+        clearButton.style.marginLeft = '5px';
+        clearButton.style.backgroundColor = '#990000';
+        clearButton.style.color = '#fff';
+        clearButton.style.border = 'none';
+        clearButton.style.padding = '3px 8px';
+        clearButton.style.borderRadius = '3px';
+        clearButton.style.cursor = 'pointer';
+        
+        // Add header to debug panel
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.marginBottom = '10px';
+        
+        const title = document.createElement('span');
+        title.textContent = 'Move Debug Monitor';
+        title.style.fontWeight = 'bold';
+        
+        header.appendChild(title);
+        header.appendChild(clearButton);
+        
+        debugPanel.appendChild(header);
+        
+        // Add content area
+        const content = document.createElement('div');
+        content.id = 'move-debug-content';
+        debugPanel.appendChild(content);
+        
+        // Hide panel initially
+        debugPanel.style.display = 'none';
+        
+        // Add to document
+        document.body.appendChild(toggleButton);
+        document.body.appendChild(debugPanel);
+        
+        // Toggle button functionality
+        toggleButton.addEventListener('click', function() {
+            if (debugPanel.style.display === 'none') {
+                debugPanel.style.display = 'block';
+                toggleButton.textContent = 'Hide Move Debug';
+            } else {
+                debugPanel.style.display = 'none';
+                toggleButton.textContent = 'Show Move Debug';
+            }
+        });
+        
+        // Clear button functionality
+        clearButton.addEventListener('click', function() {
+            document.getElementById('move-debug-content').innerHTML = '';
+        });
+        
+        // Track board state history
+        const boardHistory = [];
+        
+        // Function to log to debug panel
+        window.logMoveDebug = function(message, data) {
+            const content = document.getElementById('move-debug-content');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const entry = document.createElement('div');
+            entry.style.borderBottom = '1px solid #333';
+            entry.style.paddingBottom = '5px';
+            entry.style.marginBottom = '5px';
+            
+            let html = `<span style="color: #aaa;">[${timestamp}]</span> ${message}`;
+            
+            if (data) {
+                if (typeof data === 'object') {
+                    html += `<pre style="margin: 5px 0; color: #ffcc00;">${JSON.stringify(data, null, 2)}</pre>`;
+                } else {
+                    html += `<pre style="margin: 5px 0; color: #ffcc00;">${data}</pre>`;
+                }
+            }
+            
+            entry.innerHTML = html;
+            content.appendChild(entry);
+            
+            // Auto-scroll to bottom
+            content.scrollTop = content.scrollHeight;
+        };
+        
+        // Hook into executeMove function to track moves
+        if (typeof window.executeMove === 'function' && !window.originalExecuteMove) {
+            window.originalExecuteMove = window.executeMove;
+            
+            window.executeMove = function(fromPoint, toPoint) {
+                // Log the move attempt
+                window.logMoveDebug(`Move attempt: ${fromPoint} → ${toPoint}`, {
+                    player: window.currentPlayer,
+                    dice: window.dice
+                });
+                
+                // Save board state before move
+                const boardBefore = JSON.stringify(window.board);
+                
+                // Execute the move
+                const result = window.originalExecuteMove(fromPoint, toPoint);
+                
+                // Log the result
+                window.logMoveDebug(`Move result: ${result ? 'SUCCESS' : 'FAILED'}`);
+                
+                // If successful, save board state after move
+                if (result) {
+                    const boardAfter = JSON.stringify(window.board);
+                    
+                    // Add to history
+                    boardHistory.push({
+                        timestamp: Date.now(),
+                        boardState: window.board.map(point => point.map(checker => checker.color)),
+                        player: window.currentPlayer,
+                        dice: [...window.dice]
+                    });
+                    
+                    // Keep history limited to last 10 moves
+                    if (boardHistory.length > 10) {
+                        boardHistory.shift();
+                    }
+                    
+                    // Set up verification check after 3 seconds
+                    setTimeout(function() {
+                        const currentBoard = JSON.stringify(window.board);
+                        const moveReverted = currentBoard !== boardAfter;
+                        
+                        window.logMoveDebug(`Move persistence check (3s): ${moveReverted ? 'REVERTED ⚠️' : 'PERSISTED ✓'}`, {
+                            timeElapsed: '3 seconds'
+                        });
+                    }, 3000);
+                }
+                
+                return result;
+            };
+        }
+        
+        // Hook into saveGameState to track saves
+        if (typeof window.saveGameState === 'function' && !window.debugSaveGameState) {
+            window.debugSaveGameState = window.saveGameState;
+            
+            window.saveGameState = function() {
+                window.logMoveDebug('Saving game state to Firebase', {
+                    forceUpdate: window.forcePlayerOneUpdate === true,
+                    moveCompleted: window.moveCompleted === true,
+                    diceRolled: window.diceRolled === true
+                });
+                
+                return window.debugSaveGameState();
+            };
+        }
+        
+        // Hook into processFirebaseUpdate to track updates
+        if (typeof window.processFirebaseUpdate === 'function' && !window.debugProcessFirebaseUpdate) {
+            window.debugProcessFirebaseUpdate = window.processFirebaseUpdate;
+            
+            window.processFirebaseUpdate = function(gameData) {
+                window.logMoveDebug('Received Firebase update', {
+                    fromOtherPlayer: gameData.lastMoveBy && gameData.lastMoveBy !== window.playerRole,
+                    forceUpdate: gameData.forceUpdate === true,
+                    debugButtonClicked: gameData.debugButtonClicked === true
+                });
+                
+                return window.debugProcessFirebaseUpdate(gameData);
+            };
+        }
+        
+        // Monitor player joining process
+        window.logMoveDebug('Current player status', {
+            gameId: window.gameId,
+            playerRole: window.playerRole,
+            player1Name: window.player1Name,
+            player2Name: window.player2Name,
+            gameStarted: window.gameStarted
+        });
+        
+        // Hook into initFromUrl to monitor player joining
+        if (typeof window.initFromUrl === 'function' && !window.debugInitFromUrl) {
+            window.debugInitFromUrl = window.initFromUrl;
+            
+            window.initFromUrl = function() {
+                window.logMoveDebug('Initializing from URL');
+                
+                // Get URL params before they're processed
+                const params = new URLSearchParams(window.location.search);
+                const urlParams = {
+                    gameId: params.get('gameId'),
+                    playerNum: params.get('playerNum'),
+                    playerName: params.get('playerName')
+                };
+                
+                window.logMoveDebug('URL parameters', urlParams);
+                
+                // Call original function
+                const result = window.debugInitFromUrl();
+                
+                // Log state after initialization
+                setTimeout(function() {
+                    window.logMoveDebug('Player state after initialization', {
+                        gameId: window.gameId,
+                        playerRole: window.playerRole,
+                        player1Name: window.player1Name,
+                        player2Name: window.player2Name,
+                        gameStarted: window.gameStarted,
+                        waitingMessageVisible: !document.getElementById('waiting-message').classList.contains('hidden'),
+                        nameEntryVisible: !document.getElementById('name-entry').classList.contains('hidden'),
+                        gameControlsVisible: !document.getElementById('game-controls').classList.contains('hidden')
+                    });
+                }, 1000);
+                
+                return result;
+            };
+        }
+        
+        // Hook into join button handler
+        const joinButton = document.getElementById('join-button');
+        if (joinButton && !joinButton._debugHooked) {
+            const originalClickHandler = joinButton.onclick;
+            
+            joinButton.addEventListener('click', function(event) {
+                const playerName = document.getElementById('player-name-input').value.trim();
+                const params = new URLSearchParams(window.location.search);
+                
+                window.logMoveDebug('Join button clicked', {
+                    playerName: playerName,
+                    urlPlayerNum: params.get('playerNum'),
+                    currentPlayerRole: window.playerRole
+                });
+                
+                // Let the original handler run
+                if (originalClickHandler) {
+                    originalClickHandler(event);
+                }
+                
+                // Log state after joining
+                setTimeout(function() {
+                    window.logMoveDebug('Player state after joining', {
+                        gameId: window.gameId,
+                        playerRole: window.playerRole,
+                        player1Name: window.player1Name,
+                        player2Name: window.player2Name,
+                        gameStarted: window.gameStarted,
+                        waitingMessageVisible: document.getElementById('waiting-message') && 
+                            !document.getElementById('waiting-message').classList.contains('hidden'),
+                        nameEntryVisible: document.getElementById('name-entry') && 
+                            !document.getElementById('name-entry').classList.contains('hidden'),
+                        gameControlsVisible: document.getElementById('game-controls') && 
+                            !document.getElementById('game-controls').classList.contains('hidden')
+                    });
+                }, 1000);
+            });
+            
+            joinButton._debugHooked = true;
+        }
+        
+        // Add a function to compare board states
+        window.compareBoards = function() {
+            if (boardHistory.length < 2) {
+                window.logMoveDebug('Not enough board history to compare');
+                return;
+            }
+            
+            const latest = boardHistory[boardHistory.length - 1];
+            const previous = boardHistory[boardHistory.length - 2];
+            
+            window.logMoveDebug('Board comparison', {
+                latest: latest,
+                previous: previous,
+                timeElapsed: `${Math.round((latest.timestamp - previous.timestamp)/1000)}s`
+            });
+        };
+        
+        // Add a debug button to force comparison
+        const compareButton = document.createElement('button');
+        compareButton.textContent = 'Compare Boards';
+        compareButton.style.position = 'fixed';
+        compareButton.style.bottom = '10px';
+        compareButton.style.right = '450px';
+        compareButton.style.zIndex = '9999';
+        compareButton.style.backgroundColor = '#336699';
+        compareButton.style.color = '#fff';
+        compareButton.style.border = 'none';
+        compareButton.style.padding = '5px 10px';
+        compareButton.style.borderRadius = '3px';
+        compareButton.style.cursor = 'pointer';
+        
+        compareButton.addEventListener('click', function() {
+            window.compareBoards();
+        });
+        
+        document.body.appendChild(compareButton);
+        
+        console.log("Debug monitoring script loaded");
+        window.logMoveDebug('Debug monitoring initialized');
+    });
+    </script>
 </body>
 </html>
