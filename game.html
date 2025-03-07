@@ -277,6 +277,7 @@
                         document.getElementById('name-entry').classList.add('hidden');
                         document.getElementById('waiting-message').classList.remove('hidden');
                         document.getElementById('join-title').textContent = `Welcome, ${playerName}!`;
+                        document.getElementById('game-controls').classList.add('hidden');
                         
                         // Update player1 card
                         document.getElementById('player1-name').textContent = playerName;
@@ -289,6 +290,8 @@
                         
                         // Save initial game state to Firebase
                         if (typeof saveGameState === 'function') {
+                            // Ensure we don't force game to start yet
+                            window.forcePlayerOneUpdate = false;
                             saveGameState();
                         }
                     } 
@@ -310,6 +313,7 @@
                         
                         // Save updated game state to Firebase
                         if (typeof saveGameState === 'function') {
+                            window.forcePlayerOneUpdate = true;
                             saveGameState();
                         }
                     }
@@ -321,6 +325,7 @@
                     document.getElementById('name-entry').classList.remove('hidden');
                     document.getElementById('join-title').textContent = 'Join as Player 2';
                     document.getElementById('join-message').textContent = 'Enter your name to join this game:';
+                    document.getElementById('game-controls').classList.add('hidden');
                     
                     // Load existing game state from Firebase
                     if (typeof loadGameState === 'function') {
@@ -331,6 +336,7 @@
                     debugLog("No player info, showing join UI");
                     document.getElementById('player-join').classList.remove('hidden');
                     document.getElementById('join-message').textContent = 'Enter your name to join this game:';
+                    document.getElementById('game-controls').classList.add('hidden');
                     
                     // Load existing game state from Firebase
                     if (typeof loadGameState === 'function') {
@@ -884,7 +890,8 @@
             
             window.saveGameState = function() {
                 const now = Date.now();
-                if (now - lastSaveTime < THROTTLE_INTERVAL) {
+                // Only throttle if forcePlayerOneUpdate is not set
+                if (now - lastSaveTime < THROTTLE_INTERVAL && window.forcePlayerOneUpdate !== true) {
                     console.log("Throttling saveGameState call");
                     return;
                 }

@@ -460,14 +460,31 @@ function processFirebaseUpdate(gameData) {
                 // Set game as started
                 gameStarted = true;
                 
-                // Hide waiting message and show game controls
-                const waitingMessage = document.getElementById('waiting-message');
-                const playerJoin = document.getElementById('player-join');
-                const gameControls = document.getElementById('game-controls');
-                
-                if (waitingMessage) waitingMessage.classList.add('hidden');
-                if (playerJoin) playerJoin.classList.add('hidden');
-                if (gameControls) gameControls.classList.remove('hidden');
+                // Only hide waiting message and show game controls if both players have joined
+                if (player1Name !== "Player 1" && player2Name !== "Player 2") {
+                    console.log("Both players have joined, showing game controls");
+                    
+                    const waitingMessage = document.getElementById('waiting-message');
+                    const playerJoin = document.getElementById('player-join');
+                    const gameControls = document.getElementById('game-controls');
+                    
+                    if (waitingMessage) waitingMessage.classList.add('hidden');
+                    if (playerJoin) playerJoin.classList.add('hidden');
+                    if (gameControls) gameControls.classList.remove('hidden');
+                } else if (playerRole === "player1" && player2Name === "Player 2") {
+                    // Player 1 is waiting for player 2
+                    console.log("Player 1 is waiting for player 2 to join");
+                    
+                    const waitingMessage = document.getElementById('waiting-message');
+                    const playerJoin = document.getElementById('player-join');
+                    const nameEntry = document.getElementById('name-entry');
+                    const gameControls = document.getElementById('game-controls');
+                    
+                    if (waitingMessage) waitingMessage.classList.remove('hidden');
+                    if (playerJoin) playerJoin.classList.remove('hidden');
+                    if (nameEntry) nameEntry.classList.add('hidden');
+                    if (gameControls) gameControls.classList.add('hidden');
+                }
                 
                 // Update game status
                 gameStatus = gameData.gameStatus || (player1Name + "'s turn to roll");
