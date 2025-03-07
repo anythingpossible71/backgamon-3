@@ -407,25 +407,29 @@ function executeMove(fromPoint, toPoint) {
         // Start continuous reversion check
         startReversionCheck();
         
-        // Force state save immediately, THREE times for reliability
+        // EXTRA SYNC: Force multiple saves after move
         if (typeof saveGameState === 'function') {
-            console.log("Saving game state after move (1st attempt)");
+            console.log("EXTRA SYNC: Saving after move (1)");
             saveGameState();
             
-            // Force additional saves after slight delays for reliability
+            // Additional saves with delay for reliability
             setTimeout(() => {
-                console.log("Saving game state after move (2nd attempt)");
+                console.log("EXTRA SYNC: Saving after move (2)");
                 if (typeof saveGameState === 'function') {
+                    // Generate new client ID for this save to ensure it's accepted
+                    window.clientId = 'move_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
                     saveGameState();
                 }
-            }, 500);
+            }, 300);
             
             setTimeout(() => {
-                console.log("Saving game state after move (3rd attempt)");
+                console.log("EXTRA SYNC: Saving after move (3)");
                 if (typeof saveGameState === 'function') {
+                    // Generate new client ID for this save to ensure it's accepted
+                    window.clientId = 'move_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
                     saveGameState();
                 }
-            }, 1500);
+            }, 800);
         }
         
         // Check if all moves are done
@@ -521,9 +525,6 @@ function rollDice() {
         return;
     }
     
-    // CRITICAL: Lock moves during dice roll
-    isMoveLocked = true;
-    
     // Generate random dice values
     dice = [
         Math.floor(Math.random() * 6) + 1,
@@ -538,50 +539,29 @@ function rollDice() {
     
     diceRolled = true;
     
-    // CRITICAL: Create a deep copy of the board state for lock protection
-    lockedBoardState = {
-        board: JSON.parse(JSON.stringify(board)),
-        whiteBar: [...whiteBar],
-        blackBar: [...blackBar],
-        whiteBearOff: [...whiteBearOff],
-        blackBearOff: [...blackBearOff],
-        dice: [...dice],
-        diceRolled: diceRolled,
-        currentPlayer: currentPlayer
-    };
-    
-    // Clear previous lock timeout if exists
-    if (lockTimeout) {
-        clearTimeout(lockTimeout);
-    }
-    
-    // Set a timeout to release the lock after LOCK_DURATION
-    lockTimeout = setTimeout(() => {
-        console.log("Dice roll lock released after timeout");
-        isMoveLocked = false;
-        lockedBoardState = null;
-    }, LOCK_DURATION);
-    
-    // Start continuous reversion check
-    startReversionCheck();
-    
-    // Save game state immediately
+    // EXTRA SYNC: Force multiple saves after dice roll
     if (typeof saveGameState === 'function') {
-        console.log("Saving game state after dice roll (1st attempt)");
+        console.log("EXTRA SYNC: Saving after dice roll (1)");
         saveGameState();
         
-        // Force additional saves after slight delays for reliability
+        // Additional saves with delay for reliability
         setTimeout(() => {
-            console.log("Saving game state after dice roll (2nd attempt)");
+            console.log("EXTRA SYNC: Saving after dice roll (2)");
             if (typeof saveGameState === 'function') {
+                // Generate new client ID for this save to ensure it's accepted
+                window.clientId = 'dice_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
                 saveGameState();
             }
-        }, 500);
-    }
-    
-    // Update UI
-    if (typeof updateDiceDisplay === 'function') {
-        updateDiceDisplay();
+        }, 300);
+        
+        setTimeout(() => {
+            console.log("EXTRA SYNC: Saving after dice roll (3)");
+            if (typeof saveGameState === 'function') {
+                // Generate new client ID for this save to ensure it's accepted
+                window.clientId = 'dice_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+                saveGameState();
+            }
+        }, 800);
     }
     
     // Check if player has legal moves
@@ -633,6 +613,31 @@ function switchPlayer() {
     // Start continuous reversion check
     startReversionCheck();
     
+    // EXTRA SYNC: Force multiple saves after player switch
+    if (typeof saveGameState === 'function') {
+        console.log("EXTRA SYNC: Saving after player switch (1)");
+        saveGameState();
+        
+        // Additional saves with delay for reliability
+        setTimeout(() => {
+            console.log("EXTRA SYNC: Saving after player switch (2)");
+            if (typeof saveGameState === 'function') {
+                // Generate new client ID for this save to ensure it's accepted
+                window.clientId = 'switch_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+                saveGameState();
+            }
+        }, 300);
+        
+        setTimeout(() => {
+            console.log("EXTRA SYNC: Saving after player switch (3)");
+            if (typeof saveGameState === 'function') {
+                // Generate new client ID for this save to ensure it's accepted
+                window.clientId = 'switch_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+                saveGameState();
+            }
+        }, 800);
+    }
+    
     // Update UI
     if (typeof updatePlayerInfo === 'function') {
         updatePlayerInfo();
@@ -640,20 +645,6 @@ function switchPlayer() {
     
     if (typeof updateDiceDisplay === 'function') {
         updateDiceDisplay();
-    }
-    
-    // Save game state immediately
-    if (typeof saveGameState === 'function') {
-        console.log("Saving game state after player switch (1st attempt)");
-        saveGameState();
-        
-        // Force additional saves after slight delays for reliability
-        setTimeout(() => {
-            console.log("Saving game state after player switch (2nd attempt)");
-            if (typeof saveGameState === 'function') {
-                saveGameState();
-            }
-        }, 500);
     }
     
     // Check win condition

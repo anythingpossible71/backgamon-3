@@ -195,7 +195,7 @@
 <body>
     <!-- Version Banner - Always Visible -->
     <div id="version-banner">
-        BACKGAMMON VERSION 4.0.0 - MINIMAL SOLUTION
+        BACKGAMMON VERSION 5.0.0 - MANUAL SYNC
     </div>
     
     <div id="game-container">
@@ -240,6 +240,16 @@
             </div>
             
             <div id="game-status">Waiting for players...</div>
+            
+            <!-- MANUAL SYNC BUTTONS -->
+            <div style="margin-top: 20px; text-align: center; background-color: #ffe0e0; padding: 10px; border-radius: 8px;">
+                <h3 style="margin-top: 0; color: #d32f2f;">Manual Synchronization Tools</h3>
+                <p>If you don't see the other player's moves, use these buttons:</p>
+                <div style="display: flex; justify-content: center; gap: 10px;">
+                    <button id="sync-send-button" style="background-color: #d32f2f;">SEND MY STATE</button>
+                    <button id="sync-get-button" style="background-color: #d32f2f;">GET LATEST STATE</button>
+                </div>
+            </div>
             
             <div style="margin-top: 10px; text-align: center;">
                 <button id="debug-button" style="background-color: #666;">Debug Info</button>
@@ -673,6 +683,25 @@
                     console.log("Board is empty, initializing...");
                     initializeBoard();
                 }
+            }
+        });
+        
+        // Add manual sync button handlers
+        document.getElementById('sync-send-button').addEventListener('click', function() {
+            console.log("MANUAL: Sending game state to Firebase");
+            if (typeof saveGameState === 'function') {
+                // Force a save with a random client ID to ensure it's processed
+                window.clientId = 'manual_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+                saveGameState();
+                alert("Your game state has been sent!");
+            }
+        });
+        
+        document.getElementById('sync-get-button').addEventListener('click', function() {
+            console.log("MANUAL: Fetching latest game state from Firebase");
+            if (typeof loadGameState === 'function') {
+                loadGameState();
+                alert("Latest game state has been fetched!");
             }
         });
         

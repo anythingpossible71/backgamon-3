@@ -1,5 +1,5 @@
-// COMPLETE REWRITE - MINIMAL SOLUTION
-// firebase-config.js - v4.0.0 MINIMAL
+// COMPLETE REWRITE - MANUAL SYNC SOLUTION (v5.0.0)
+// firebase-config.js
 
 // Firebase configuration
 const firebaseConfig = {
@@ -18,22 +18,29 @@ if (firebase.apps.length === 0) {
   console.log("Firebase initialized");
 }
 
-// Unique client ID - generated once per browser session
+// Unique client ID - will be changed for manual saves
 window.clientId = 'client_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
-console.log("MINIMAL: Client ID generated:", window.clientId);
+console.log("Initial client ID generated:", window.clientId);
+
+// Global save counter for debugging
+let saveCounter = 0;
 
 // Generate a unique game ID
 function generateUniqueId() {
   return Math.random().toString(36).substring(2, 9);
 }
 
-// Save game state to Firebase (SIMPLIFIED)
+// Save game state to Firebase with detailed errors
 function saveGameState() {
-  console.log("MINIMAL: Saving game state...");
+  // Increment save counter
+  saveCounter++;
+  const currentSaveNumber = saveCounter;
+  
+  console.log(`SAVE #${currentSaveNumber}: Starting save with client ID ${window.clientId}`);
   
   // Ensure we have a game ID
   if (!gameId) {
-    console.error("No game ID, cannot save state");
+    console.error(`SAVE #${currentSaveNumber}: No game ID, cannot save state`);
     return;
   }
   
@@ -70,31 +77,33 @@ function saveGameState() {
       // Critical fields for sync
       timestamp: Date.now(),
       lastUpdatedBy: playerRole,
-      clientId: window.clientId
+      clientId: window.clientId,
+      saveNumber: currentSaveNumber
     };
     
-    console.log("MINIMAL: Saving with client ID:", window.clientId);
+    console.log(`SAVE #${currentSaveNumber}: Prepared state for saving`);
     
-    // Save to Firebase
+    // Save to Firebase with detailed errors
     firebase.database().ref('games/' + gameId).set(gameData)
       .then(() => {
-        console.log("MINIMAL: Game saved successfully");
+        console.log(`SAVE #${currentSaveNumber}: Game saved successfully`);
       })
       .catch((error) => {
-        console.error("MINIMAL: Error saving game:", error);
+        console.error(`SAVE #${currentSaveNumber}: Firebase error:`, error.code, error.message);
+        console.error(`SAVE #${currentSaveNumber}: Full error:`, error);
       });
   }
   catch (error) {
-    console.error("MINIMAL: Error in saveGameState:", error);
+    console.error(`SAVE #${currentSaveNumber}: Exception in saveGameState:`, error);
   }
 }
 
 // Load game state initially
 function loadGameState() {
-  console.log("MINIMAL: Loading initial game state...");
+  console.log("LOAD: Fetching game state from Firebase");
   
   if (!gameId) {
-    console.error("No game ID, cannot load state");
+    console.error("LOAD: No game ID, cannot load state");
     return;
   }
   
@@ -102,53 +111,63 @@ function loadGameState() {
     .then((snapshot) => {
       const gameData = snapshot.val();
       if (!gameData) {
-        console.log("No existing game data found");
+        console.log("LOAD: No existing game data found");
         return;
       }
       
-      console.log("MINIMAL: Initial game data loaded");
+      console.log(`LOAD: Got game data (save #${gameData.saveNumber || 'unknown'})`);
       updateGameFromFirebase(gameData);
     })
     .catch((error) => {
-      console.error("MINIMAL: Error loading game:", error);
+      console.error("LOAD: Firebase error:", error.code, error.message);
+      console.error("LOAD: Full error:", error);
     });
 }
 
 // Listen for game changes
 function listenForGameChanges(gameId) {
-  console.log("MINIMAL: Setting up listener for game changes");
+  console.log("LISTEN: Setting up game changes listener");
   
   if (!gameId) {
-    console.error("No game ID, cannot listen for changes");
+    console.error("LISTEN: No game ID, cannot listen for changes");
     return;
   }
   
   firebase.database().ref('games/' + gameId).on('value', (snapshot) => {
-    const gameData = snapshot.val();
-    
-    if (!gameData) {
-      console.log("MINIMAL: No game data in update");
-      return;
+    try {
+      const gameData = snapshot.val();
+      
+      if (!gameData) {
+        console.log("LISTEN: No game data in update");
+        return;
+      }
+      
+      console.log(`LISTEN: Received update (save #${gameData.saveNumber || 'unknown'})`);
+      updateGameFromFirebase(gameData);
     }
-    
-    // Process the update
-    updateGameFromFirebase(gameData);
+    catch (error) {
+      console.error("LISTEN: Error processing update:", error);
+    }
+  }, (error) => {
+    console.error("LISTEN: Firebase error:", error.code, error.message);
+    console.error("LISTEN: Full error:", error);
   });
   
-  console.log("MINIMAL: Firebase listener established");
+  console.log("LISTEN: Firebase listener established");
 }
 
-// Unified function to update game from Firebase
+// Process a Firebase update
 function updateGameFromFirebase(gameData) {
-  console.log("MINIMAL: Processing update from Firebase");
+  const saveNumber = gameData.saveNumber || 'unknown';
+  console.log(`UPDATE #${saveNumber}: Processing update from Firebase`);
   
-  // MOST CRITICAL LINE: Skip updates from our own client
-  if (gameData.clientId === window.clientId) {
-    console.log("MINIMAL: IGNORING update from our own client:", window.clientId);
+  // Skip updates from our own client
+  if (gameData.clientId === window.clientId && !gameData.clientId.startsWith('manual_')) {
+    console.log(`UPDATE #${saveNumber}: Ignoring update from our own client`);
     return;
   }
   
-  console.log("MINIMAL: Update from client:", gameData.clientId, "Our client:", window.clientId);
+  console.log(`UPDATE #${saveNumber}: Update from client: ${gameData.clientId}, our ID: ${window.clientId}`);
   
   try {
     // Update player names
@@ -179,12 +198,11 @@ function updateGameFromFirebase(gameData) {
       }
     }
     
-    // Update board state
+    // Update key game state
     if (gameData.board) {
       board = JSON.parse(JSON.stringify(gameData.board));
     }
     
-    // Update all other game state
     if (gameData.currentPlayer) currentPlayer = gameData.currentPlayer;
     if (gameData.dice) dice = Array.isArray(gameData.dice) ? [...gameData.dice] : [];
     if (typeof gameData.diceRolled !== 'undefined') diceRolled = gameData.diceRolled;
@@ -195,29 +213,52 @@ function updateGameFromFirebase(gameData) {
     if (gameData.blackBearOff) blackBearOff = Array.isArray(gameData.blackBearOff) ? [...gameData.blackBearOff] : [];
     
     // Update UI
-    if (typeof updatePlayerInfo === 'function') updatePlayerInfo();
-    if (typeof updateDiceDisplay === 'function') updateDiceDisplay();
-    if (typeof updateGameStatus === 'function') updateGameStatus();
+    if (typeof updatePlayerInfo === 'function') {
+      console.log(`UPDATE #${saveNumber}: Updating player info UI`);
+      updatePlayerInfo();
+    }
+    
+    if (typeof updateDiceDisplay === 'function') {
+      console.log(`UPDATE #${saveNumber}: Updating dice display UI`);
+      updateDiceDisplay();
+    }
+    
+    if (typeof updateGameStatus === 'function') {
+      console.log(`UPDATE #${saveNumber}: Updating game status UI`);
+      updateGameStatus();
+    }
     
     // Force redraw
-    if (typeof redraw === 'function') redraw();
+    if (typeof redraw === 'function') {
+      console.log(`UPDATE #${saveNumber}: Forcing board redraw`);
+      redraw();
+    }
     
-    console.log("MINIMAL: Update processed successfully");
+    // Enable roll button if it's this player's turn
+    if (playerRole === currentPlayer) {
+      console.log(`UPDATE #${saveNumber}: It's now this player's turn, enabling roll button`);
+      const rollButton = document.getElementById('roll-button');
+      if (rollButton && !diceRolled) {
+        rollButton.disabled = false;
+      }
+    }
+    
+    console.log(`UPDATE #${saveNumber}: Update processed successfully`);
   }
   catch (error) {
-    console.error("MINIMAL: Error processing update:", error);
+    console.error(`UPDATE #${saveNumber}: Error processing update:`, error);
   }
 }
 
 // Force game to start
 function forceStartGame() {
-  console.log("MINIMAL: Forcing game to start");
+  console.log("FORCE: Starting game");
   
   gameStarted = true;
   saveGameState();
 }
 
-// Define processFirebaseUpdate for compatibility, but just redirect to our simplified function
+// Define processFirebaseUpdate for compatibility with older code
 function processFirebaseUpdate(gameData) {
   updateGameFromFirebase(gameData);
 }
