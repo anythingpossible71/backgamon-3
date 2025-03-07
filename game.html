@@ -301,9 +301,11 @@
                 </div>
             </div>
             
-            <div style="margin-top: 10px; text-align: center;">
-                <button id="debug-button" style="background-color: #666;">Debug Info</button>
-                <div id="debug-info"></div>
+            <div id="sync-status" style="margin-top: 10px; text-align: center;">
+                <div id="sync-indicator">
+                    <span id="sync-text">Sync Status</span>
+                    <button id="sync-get-button" style="background-color: #0277bd;">FORCE FETCH</button>
+                </div>
             </div>
         </div>
     </div>
@@ -676,65 +678,6 @@
                 console.error("Error in updateGameStatus:", error);
             }
         }
-        
-        // Debug button handler
-        document.getElementById('debug-button').addEventListener('click', function() {
-            const debugInfo = document.getElementById('debug-info');
-            
-            if (debugInfo.style.display === 'block') {
-                debugInfo.style.display = 'none';
-                this.textContent = 'Debug Info';
-            } else {
-                // Update debug info
-                debugInfo.innerHTML = `
-                    <strong>Game ID:</strong> ${gameId}<br>
-                    <strong>Player Role:</strong> ${playerRole}<br>
-                    <strong>Player 1:</strong> ${player1Name}<br>
-                    <strong>Player 2:</strong> ${player2Name}<br>
-                    <strong>Game Started:</strong> ${gameStarted}<br>
-                    <strong>Current Player:</strong> ${currentPlayer}<br>
-                    <strong>Dice:</strong> ${JSON.stringify(dice)}<br>
-                    <strong>Dice Rolled:</strong> ${diceRolled}<br>
-                    <strong>Can Move:</strong> ${canPlayerMove ? canPlayerMove() : "unknown"}<br>
-                    <strong>Board Length:</strong> ${board ? board.length : "no board"}<br>
-                `;
-                
-                debugInfo.style.display = 'block';
-                this.textContent = 'Hide Debug';
-                
-                // Force the game to start
-                checkAndStartGame();
-                
-                console.log("=== GAME STATE DEBUG ===");
-                console.log("gameId:", gameId);
-                console.log("playerRole:", playerRole);
-                console.log("player1Name:", player1Name);
-                console.log("player2Name:", player2Name);
-                console.log("gameStarted:", gameStarted);
-                console.log("currentPlayer:", currentPlayer);
-                console.log("dice:", dice);
-                console.log("diceRolled:", diceRolled);
-                console.log("board:", board);
-                
-                // Check if board has checkers
-                let hasCheckers = false;
-                if (board && Array.isArray(board)) {
-                    for (let i = 0; i < board.length; i++) {
-                        if (board[i] && board[i].length > 0) {
-                            hasCheckers = true;
-                            break;
-                        }
-                    }
-                }
-                console.log("Board has checkers:", hasCheckers);
-                
-                // If board is empty, force initialization
-                if (!hasCheckers && typeof initializeBoard === 'function') {
-                    console.log("Board is empty, initializing...");
-                    initializeBoard();
-                }
-            }
-        });
         
         // Add manual sync button handlers
         document.getElementById('sync-send-button').addEventListener('click', function() {

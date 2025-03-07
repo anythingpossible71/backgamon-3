@@ -61,26 +61,30 @@ function hasBoardData(boardData) {
 
 // FINAL VERSION: Save game state - Extremely aggressive
 function saveGameState() {
-  console.log("SAVE: Starting AUTO-REFRESH save");
+  console.log(`%c[MOVE TRACKING] Starting save operation`, 'background: #3498db; color: white; padding: 2px 5px; border-radius: 3px;');
   window.updateSyncStatus("Saving...", "#ff9500");
   
   try {
     // Ensure we have a game ID
     if (!gameId) {
-      console.error("SAVE: No game ID, cannot save state");
+      console.error(`%c[MOVE TRACKING] No game ID, cannot save state`, 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;');
       window.updateSyncStatus("Error: No Game ID", "#ff3b30");
       return;
     }
     
+    // Check if move is in progress
+    const moveInProgressStatus = typeof window.moveInProgress !== 'undefined' ? window.moveInProgress : false;
+    console.log(`%c[MOVE TRACKING] Move in progress status: ${moveInProgressStatus}`, 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
+    
     // Validate board data
     if (!hasBoardData(board)) {
-      console.error("SAVE: Board is empty, initializing before save");
+      console.error(`%c[MOVE TRACKING] Board is empty, initializing before save`, 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;');
       window.updateSyncStatus("Fixing empty board", "#ff9500");
       
       if (typeof initializeBoard === 'function') {
         initializeBoard();
       } else {
-        console.error("SAVE: Cannot initialize board, save aborted");
+        console.error(`%c[MOVE TRACKING] Cannot initialize board, save aborted`, 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;');
         window.updateSyncStatus("Error: Empty Board", "#ff3b30");
         return;
       }
@@ -124,12 +128,43 @@ function saveGameState() {
       salt: salt // Add random value to ensure Firebase detects the change
     };
     
-    console.log(`SAVE: Game data prepared, timestamp: ${timestamp}, dice: ${JSON.stringify(dice)}`);
+    console.log(`%c[MOVE TRACKING] Game data prepared for save:`, 'background: #2ecc71; color: white; padding: 2px 5px; border-radius: 3px;');
+    console.log(`Timestamp: ${timestamp}`);
+    console.log(`Current player: ${currentPlayer}`);
+    console.log(`Updated by: ${playerRole}`);
+    console.log(`Dice: ${JSON.stringify(dice)}`);
+    console.log(`Dice rolled: ${diceRolled}`);
+    
+    // Count checkers to verify integrity
+    let whiteCount = 0;
+    let blackCount = 0;
+    
+    // Count board checkers
+    for (let i = 0; i < boardCopy.length; i++) {
+      if (boardCopy[i]) {
+        for (let j = 0; j < boardCopy[i].length; j++) {
+          if (boardCopy[i][j].color === 'white') whiteCount++;
+          if (boardCopy[i][j].color === 'black') blackCount++;
+        }
+      }
+    }
+    
+    // Count bar and bear off checkers
+    whiteCount += gameData.whiteBar.length;
+    blackCount += gameData.blackBar.length;
+    whiteCount += gameData.whiteBearOff.length;
+    blackCount += gameData.blackBearOff.length;
+    
+    console.log(`%c[MOVE TRACKING] Checker count - White: ${whiteCount}, Black: ${blackCount}`, 'background: #9b59b6; color: white; padding: 2px 5px; border-radius: 3px;');
+    
+    if (whiteCount !== 15 || blackCount !== 15) {
+      console.error(`%c[MOVE TRACKING] INTEGRITY ERROR: Incorrect checker count! White: ${whiteCount}, Black: ${blackCount}`, 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;');
+    }
     
     // Save to Firebase
     firebase.database().ref('games/' + gameId).set(gameData)
       .then(() => {
-        console.log(`SAVE: Game saved successfully at ${timestamp}`);
+        console.log(`%c[MOVE TRACKING] Game saved successfully at ${timestamp}`, 'background: #2ecc71; color: white; padding: 2px 5px; border-radius: 3px;');
         lastSuccessfulSync = timestamp;
         window.updateSyncStatus("Saved ✓", "#34c759");
         
@@ -140,12 +175,12 @@ function saveGameState() {
         }
       })
       .catch((error) => {
-        console.error(`SAVE: Error: ${error.message}`);
+        console.error(`%c[MOVE TRACKING] Save error: ${error.message}`, 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;');
         window.updateSyncStatus("Save Error!", "#ff3b30");
       });
   }
   catch (error) {
-    console.error(`SAVE: Exception: ${error.message}`);
+    console.error(`%c[MOVE TRACKING] Save exception: ${error.message}`, 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;');
     window.updateSyncStatus("Save Exception!", "#ff3b30");
   }
 }
@@ -209,9 +244,21 @@ function fetchLatestState() {
 
 // Process game updates with extreme caution
 function processGameUpdate(gameData) {
-  console.log(`PROCESS: Update from ${gameData.updatedBy}, timestamp: ${gameData.timestamp}`);
+  console.log(`%c[MOVE TRACKING] Processing update from ${gameData.updatedBy}, timestamp: ${gameData.timestamp}`, 'background: #3498db; color: white; padding: 2px 5px; border-radius: 3px;');
   
   try {
+    // Store current state for comparison
+    const currentState = {
+      board: JSON.parse(JSON.stringify(board)),
+      whiteBar: [...whiteBar],
+      blackBar: [...blackBar],
+      whiteBearOff: [...whiteBearOff],
+      blackBearOff: [...blackBearOff],
+      dice: [...dice],
+      currentPlayer,
+      diceRolled
+    };
+    
     // Always update player names
     if (gameData.player1Name && gameData.player1Name !== "Player 1") {
       player1Name = gameData.player1Name;
@@ -230,33 +277,61 @@ function processGameUpdate(gameData) {
     
     // CRITICAL DECISION: When to apply the update
     
+    // Check if a move is in progress
+    if (typeof window.moveInProgress !== 'undefined' && window.moveInProgress) {
+      console.log(`%c[MOVE TRACKING] REJECTED UPDATE: Move in progress, rejecting update from ${gameData.updatedBy}`, 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;');
+      return;
+    }
+    
     // CASE 1: It's not our turn - always apply updates
     const isMyTurn = playerRole === currentPlayer;
     if (!isMyTurn) {
-      console.log("PROCESS: Not our turn, applying update");
+      console.log(`%c[MOVE TRACKING] Not our turn, applying update from ${gameData.updatedBy}`, 'background: #2ecc71; color: white; padding: 2px 5px; border-radius: 3px;');
       updateGameStateFromData(gameData);
     } 
     // CASE 2: It's our turn but we haven't rolled yet - apply updates
     else if (isMyTurn && !diceRolled) {
-      console.log("PROCESS: Our turn but dice not rolled yet, applying update");
+      console.log(`%c[MOVE TRACKING] Our turn but dice not rolled yet, applying update from ${gameData.updatedBy}`, 'background: #2ecc71; color: white; padding: 2px 5px; border-radius: 3px;');
       updateGameStateFromData(gameData);
     }
     // CASE 3: It's our turn and we've rolled - be very careful
     else if (isMyTurn && diceRolled) {
       // Only update if from another player AND board has changed in an expected way
       if (gameData.updatedBy !== playerRole) {
-        console.log("PROCESS: Update during our turn from other player - checking carefully");
+        console.log(`%c[MOVE TRACKING] Update during our turn from other player - checking carefully`, 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
         
         // Only accept if clearly newer
         if (gameData.timestamp > lastSyncTimestamp + 5000) { // Must be at least 5 seconds newer
-          console.log("PROCESS: Update is significantly newer, accepting with caution");
+          console.log(`%c[MOVE TRACKING] Update is significantly newer (${gameData.timestamp} vs ${lastSyncTimestamp}), accepting with caution`, 'background: #2ecc71; color: white; padding: 2px 5px; border-radius: 3px;');
           updateGameStateFromData(gameData);
         } else {
-          console.log("PROCESS: Update too close to our last state, preserving our turn");
+          console.log(`%c[MOVE TRACKING] REJECTED UPDATE: Too close to our last state (${gameData.timestamp} vs ${lastSyncTimestamp}), preserving our turn`, 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;');
         }
       } else {
-        console.log("PROCESS: Own update during our turn - reinforcing our state");
+        console.log(`%c[MOVE TRACKING] Own update during our turn - reinforcing our state`, 'background: #9b59b6; color: white; padding: 2px 5px; border-radius: 3px;');
       }
+    }
+    
+    // Compare states after update
+    const newState = {
+      board: JSON.parse(JSON.stringify(board)),
+      whiteBar: [...whiteBar],
+      blackBar: [...blackBar],
+      whiteBearOff: [...whiteBearOff],
+      blackBearOff: [...blackBearOff],
+      dice: [...dice],
+      currentPlayer,
+      diceRolled
+    };
+    
+    // Check if state changed
+    const stateChanged = JSON.stringify(currentState) !== JSON.stringify(newState);
+    if (stateChanged) {
+      console.log(`%c[MOVE TRACKING] State changed after update:`, 'background: #9b59b6; color: white; padding: 2px 5px; border-radius: 3px;');
+      console.log('Previous state:', currentState);
+      console.log('New state:', newState);
+    } else {
+      console.log(`%c[MOVE TRACKING] No state change after update processing`, 'background: #7f8c8d; color: white; padding: 2px 5px; border-radius: 3px;');
     }
     
     // Always update game UI and visibility
@@ -269,13 +344,27 @@ function processGameUpdate(gameData) {
     }
   }
   catch (error) {
-    console.error(`PROCESS: Error: ${error.message}`);
+    console.error(`%c[MOVE TRACKING] Error processing update: ${error.message}`, 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;');
     window.updateSyncStatus("Process Error!", "#ff3b30");
   }
 }
 
 // Update game state from data
 function updateGameStateFromData(gameData) {
+  console.log(`%c[MOVE TRACKING] Updating game state from data`, 'background: #3498db; color: white; padding: 2px 5px; border-radius: 3px;');
+  
+  // Store current state for comparison
+  const previousState = {
+    board: JSON.parse(JSON.stringify(board)),
+    whiteBar: [...whiteBar],
+    blackBar: [...blackBar],
+    whiteBearOff: [...whiteBearOff],
+    blackBearOff: [...blackBearOff],
+    dice: [...dice],
+    currentPlayer,
+    diceRolled
+  };
+  
   // Update board if valid
   if (gameData.board && hasBoardData(gameData.board)) {
     board = JSON.parse(JSON.stringify(gameData.board));
@@ -290,6 +379,54 @@ function updateGameStateFromData(gameData) {
   if (gameData.currentPlayer) currentPlayer = gameData.currentPlayer;
   if (gameData.dice) dice = Array.isArray(gameData.dice) ? [...gameData.dice] : [];
   if (typeof gameData.diceRolled !== 'undefined') diceRolled = gameData.diceRolled;
+  
+  // Compare states after update
+  const newState = {
+    board: JSON.parse(JSON.stringify(board)),
+    whiteBar: [...whiteBar],
+    blackBar: [...blackBar],
+    whiteBearOff: [...whiteBearOff],
+    blackBearOff: [...blackBearOff],
+    dice: [...dice],
+    currentPlayer,
+    diceRolled
+  };
+  
+  // Check if state changed
+  const stateChanged = JSON.stringify(previousState) !== JSON.stringify(newState);
+  if (stateChanged) {
+    console.log(`%c[MOVE TRACKING] State changed after updateGameStateFromData:`, 'background: #9b59b6; color: white; padding: 2px 5px; border-radius: 3px;');
+    console.log('Previous state:', previousState);
+    console.log('New state:', newState);
+    
+    // Detailed board comparison to identify exactly what changed
+    console.log(`%c[MOVE TRACKING] Detailed board changes:`, 'background: #e67e22; color: white; padding: 2px 5px; border-radius: 3px;');
+    for (let i = 0; i < 24; i++) {
+      const prevPoint = previousState.board[i] || [];
+      const newPoint = newState.board[i] || [];
+      if (JSON.stringify(prevPoint) !== JSON.stringify(newPoint)) {
+        console.log(`Point ${i}: ${JSON.stringify(prevPoint)} -> ${JSON.stringify(newPoint)}`);
+      }
+    }
+    
+    // Check for bar changes
+    if (JSON.stringify(previousState.whiteBar) !== JSON.stringify(newState.whiteBar)) {
+      console.log(`White bar: ${JSON.stringify(previousState.whiteBar)} -> ${JSON.stringify(newState.whiteBar)}`);
+    }
+    if (JSON.stringify(previousState.blackBar) !== JSON.stringify(newState.blackBar)) {
+      console.log(`Black bar: ${JSON.stringify(previousState.blackBar)} -> ${JSON.stringify(newState.blackBar)}`);
+    }
+    
+    // Check for bear off changes
+    if (JSON.stringify(previousState.whiteBearOff) !== JSON.stringify(newState.whiteBearOff)) {
+      console.log(`White bear off: ${JSON.stringify(previousState.whiteBearOff)} -> ${JSON.stringify(newState.whiteBearOff)}`);
+    }
+    if (JSON.stringify(previousState.blackBearOff) !== JSON.stringify(newState.blackBearOff)) {
+      console.log(`Black bear off: ${JSON.stringify(previousState.blackBearOff)} -> ${JSON.stringify(newState.blackBearOff)}`);
+    }
+  } else {
+    console.log(`%c[MOVE TRACKING] No state change after updateGameStateFromData`, 'background: #7f8c8d; color: white; padding: 2px 5px; border-radius: 3px;');
+  }
 }
 
 // Update game display

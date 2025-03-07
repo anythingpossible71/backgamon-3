@@ -10,12 +10,10 @@ const ROLL_COOLDOWN = 1000; // 1 second between rolls
 const SAVE_COOLDOWN = 2000; // 2 seconds between saves
 const MOUSE_COOLDOWN = 100; // 100ms between mouse events
 
-// Add global variables for move locking mechanism
-let isMoveLocked = false;
-let lockedBoardState = null;
-let lockTimeout = null;
-let revertCheckInterval = null;
-const LOCK_DURATION = 10000; // 10 seconds lock after moves
+// Simplified move tracking
+let moveInProgress = false;
+// Expose moveInProgress to window for Firebase access
+window.moveInProgress = moveInProgress;
 
 // Mouse interaction functions with throttling
 function mousePressed() {
@@ -348,17 +346,30 @@ function mouseReleased() {
 
 // Game mechanics functions
 function executeMove(fromPoint, toPoint) {
-    console.log("Executing move from", fromPoint, "to", toPoint);
-    
     try {
-        // CRITICAL: Lock moves to prevent reversion
-        isMoveLocked = true;
+        console.log(`%c[MOVE TRACKING] Executing move from ${fromPoint} to ${toPoint}`, 'background: #3498db; color: white; padding: 2px 5px; border-radius: 3px;');
+        
+        // Store previous state for comparison
+        const previousState = {
+            board: JSON.parse(JSON.stringify(board)),
+            whiteBar: [...whiteBar],
+            blackBar: [...blackBar],
+            whiteBearOff: [...whiteBearOff],
+            blackBearOff: [...blackBearOff],
+            dice: [...dice],
+            currentPlayer
+        };
+        
+        // Set move in progress flag
+        moveInProgress = true;
+        window.moveInProgress = true;
         
         // Make the move
         const checker = removeChecker(fromPoint);
         if (!checker) {
-            console.error("No checker found at point", fromPoint);
-            isMoveLocked = false;
+            console.error("%c[MOVE TRACKING] ERROR: No checker found at point " + fromPoint, 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;');
+            moveInProgress = false;
+            window.moveInProgress = false;
             return false;
         }
         
@@ -372,72 +383,53 @@ function executeMove(fromPoint, toPoint) {
             dice.splice(diceIndex, 1);
         }
         
-        // Log the move details
-        console.log("Move completed: ", {
-            from: fromPoint,
-            to: toPoint,
-            color: checker.color,
-            remainingDice: [...dice]
-        });
+        // Log the move details with current state
+        console.log(`%c[MOVE TRACKING] Move completed: ${checker.color} checker from ${fromPoint} to ${toPoint}`, 'background: #2ecc71; color: white; padding: 2px 5px; border-radius: 3px;');
+        console.log(`%c[MOVE TRACKING] Remaining dice: ${JSON.stringify(dice)}`, 'background: #2ecc71; color: white; padding: 2px 5px; border-radius: 3px;');
+        console.log(`%c[MOVE TRACKING] Current player: ${currentPlayer}`, 'background: #2ecc71; color: white; padding: 2px 5px; border-radius: 3px;');
         
-        // CRITICAL: Create a deep copy of the board state for lock protection
-        lockedBoardState = {
+        // Compare with previous state
+        console.log(`%c[MOVE TRACKING] State comparison:`, 'background: #9b59b6; color: white; padding: 2px 5px; border-radius: 3px;');
+        console.log('Previous state:', previousState);
+        console.log('Current state:', {
             board: JSON.parse(JSON.stringify(board)),
             whiteBar: [...whiteBar],
             blackBar: [...blackBar],
             whiteBearOff: [...whiteBearOff],
             blackBearOff: [...blackBearOff],
             dice: [...dice],
-            diceRolled: diceRolled,
-            currentPlayer: currentPlayer
-        };
+            currentPlayer
+        });
         
-        // Clear previous lock timeout if exists
-        if (lockTimeout) {
-            clearTimeout(lockTimeout);
-        }
-        
-        // Set a timeout to release the lock after LOCK_DURATION
-        lockTimeout = setTimeout(() => {
-            console.log("Move lock released after timeout");
-            isMoveLocked = false;
-            lockedBoardState = null;
-        }, LOCK_DURATION);
-        
-        // Start continuous reversion check
-        startReversionCheck();
-        
-        // EXTRA SYNC: Force multiple saves after move
+        // Save game state immediately after move
         if (typeof saveGameState === 'function') {
-            console.log("EXTRA SYNC: Saving after move (1)");
+            console.log("%c[MOVE TRACKING] Saving game state after move", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
             saveGameState();
             
-            // Additional saves with delay for reliability
+            // One additional save with delay for reliability
             setTimeout(() => {
-                console.log("EXTRA SYNC: Saving after move (2)");
+                console.log("%c[MOVE TRACKING] Delayed save after move", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
                 if (typeof saveGameState === 'function') {
-                    // Generate new client ID for this save to ensure it's accepted
-                    window.clientId = 'move_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
                     saveGameState();
                 }
-            }, 300);
-            
-            setTimeout(() => {
-                console.log("EXTRA SYNC: Saving after move (3)");
-                if (typeof saveGameState === 'function') {
-                    // Generate new client ID for this save to ensure it's accepted
-                    window.clientId = 'move_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
-                    saveGameState();
-                }
-            }, 800);
+                // Clear move in progress flag after delayed save
+                moveInProgress = false;
+                window.moveInProgress = false;
+                console.log("%c[MOVE TRACKING] Move in progress flag cleared", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
+            }, 500);
+        } else {
+            // Clear move in progress flag if no save function
+            moveInProgress = false;
+            window.moveInProgress = false;
+            console.log("%c[MOVE TRACKING] Move in progress flag cleared (no save function)", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
         }
         
         // Check if all moves are done
         if (dice.length === 0) {
-            console.log("All moves completed for this turn");
+            console.log("%c[MOVE TRACKING] All moves completed for this turn, switching player soon", 'background: #e67e22; color: white; padding: 2px 5px; border-radius: 3px;');
             setTimeout(() => {
                 switchPlayer();
-            }, 1500);
+            }, 1000);
         }
         
         // Force UI updates
@@ -451,8 +443,9 @@ function executeMove(fromPoint, toPoint) {
         
         return true;
     } catch (error) {
-        console.error("Error executing move:", error);
-        isMoveLocked = false;
+        console.error("%c[MOVE TRACKING] Error executing move:", 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;', error);
+        moveInProgress = false;
+        window.moveInProgress = false;
         return false;
     }
 }
@@ -627,10 +620,11 @@ function rollDice() {
 }
 
 function switchPlayer() {
-    console.log("Switching player");
+    console.log("%c[MOVE TRACKING] Switching player", 'background: #3498db; color: white; padding: 2px 5px; border-radius: 3px;');
     
-    // CRITICAL: Lock moves during player switch
-    isMoveLocked = true;
+    // Set move in progress flag
+    moveInProgress = true;
+    window.moveInProgress = true;
     
     // Reset dice
     dice = [];
@@ -639,56 +633,27 @@ function switchPlayer() {
     // Switch current player
     currentPlayer = currentPlayer === 'player1' ? 'player2' : 'player1';
     
-    // CRITICAL: Create a deep copy of the board state for lock protection
-    lockedBoardState = {
-        board: JSON.parse(JSON.stringify(board)),
-        whiteBar: [...whiteBar],
-        blackBar: [...blackBar],
-        whiteBearOff: [...whiteBearOff],
-        blackBearOff: [...blackBearOff],
-        dice: [...dice],
-        diceRolled: diceRolled,
-        currentPlayer: currentPlayer
-    };
-    
-    // Clear previous lock timeout if exists
-    if (lockTimeout) {
-        clearTimeout(lockTimeout);
-    }
-    
-    // Set a timeout to release the lock after LOCK_DURATION
-    lockTimeout = setTimeout(() => {
-        console.log("Player switch lock released after timeout");
-        isMoveLocked = false;
-        lockedBoardState = null;
-    }, LOCK_DURATION);
-    
-    // Start continuous reversion check
-    startReversionCheck();
-    
-    // EXTRA SYNC: Force multiple saves after player switch
+    // Save game state immediately after player switch
     if (typeof saveGameState === 'function') {
-        console.log("EXTRA SYNC: Saving after player switch (1)");
+        console.log("%c[MOVE TRACKING] Saving game state after player switch", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
         saveGameState();
         
-        // Additional saves with delay for reliability
+        // One additional save with delay for reliability
         setTimeout(() => {
-            console.log("EXTRA SYNC: Saving after player switch (2)");
+            console.log("%c[MOVE TRACKING] Delayed save after player switch", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
             if (typeof saveGameState === 'function') {
-                // Generate new client ID for this save to ensure it's accepted
-                window.clientId = 'switch_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
                 saveGameState();
             }
-        }, 300);
-        
-        setTimeout(() => {
-            console.log("EXTRA SYNC: Saving after player switch (3)");
-            if (typeof saveGameState === 'function') {
-                // Generate new client ID for this save to ensure it's accepted
-                window.clientId = 'switch_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
-                saveGameState();
-            }
-        }, 800);
+            // Clear move in progress flag after delayed save
+            moveInProgress = false;
+            window.moveInProgress = false;
+            console.log("%c[MOVE TRACKING] Move in progress flag cleared after player switch", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
+        }, 500);
+    } else {
+        // Clear move in progress flag if no save function
+        moveInProgress = false;
+        window.moveInProgress = false;
+        console.log("%c[MOVE TRACKING] Move in progress flag cleared (no save function)", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
     }
     
     // Update UI
