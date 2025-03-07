@@ -660,11 +660,27 @@ function redrawBoard() {
     try {
         console.log("Forcing board redraw");
         
+        // Ensure board is properly initialized
+        if (!board || !Array.isArray(board) || board.length === 0) {
+            console.log("Board not initialized, initializing now");
+            initializeBoard();
+            return;
+        }
+        
+        // Log the current board state
+        console.log("Current board state for redraw:", JSON.stringify(board));
+        
         // Clear the canvas
         clear();
         
         // Redraw the board
         drawBoard();
+        
+        // Redraw the bar
+        drawBar();
+        
+        // Redraw bear off areas
+        drawBearOffAreas();
         
         // Redraw all checkers
         drawCheckers();
@@ -673,6 +689,9 @@ function redrawBoard() {
         if (selectedChecker && validMoves.length > 0) {
             drawValidMoves();
         }
+        
+        // Update UI elements
+        updateUIDirectly();
         
         console.log("Board redraw complete");
     } catch (error) {

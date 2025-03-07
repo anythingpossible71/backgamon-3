@@ -872,6 +872,16 @@ function executeMove() {
     let moved = false;
     let playerColor = currentPlayer === 'player1' ? 'white' : 'black';
     
+    // Store original board state for rollback if needed
+    const originalBoard = JSON.parse(JSON.stringify(board));
+    const originalWhiteBar = JSON.parse(JSON.stringify(whiteBar || []));
+    const originalBlackBar = JSON.parse(JSON.stringify(blackBar || []));
+    const originalWhiteBearOff = JSON.parse(JSON.stringify(whiteBearOff || []));
+    const originalBlackBearOff = JSON.parse(JSON.stringify(blackBearOff || []));
+    const originalDice = JSON.parse(JSON.stringify(dice || []));
+    
+    console.log("Original board state:", JSON.stringify(originalBoard));
+    
     // Check valid moves (including combined moves)
     let allPossibleMoves = [...validMoves];
     let combinedMoveIndices = [];
@@ -1065,23 +1075,62 @@ function executeMove() {
     // Check for win or end of turn
     if (moved) {
         console.log("Move completed, checking game state");
+        console.log("New board state:", JSON.stringify(board));
         
         // Update UI directly to prevent loops
         updateUIDirectly();
         
         // Force immediate save to ensure move is synchronized
         window.forcePlayerOneUpdate = true;
+        window.moveCompleted = true;
         
         // Direct Firebase save without throttling
         if (typeof window.saveGameState === 'function') {
             console.log("Forcing immediate save after move");
             window.saveGameState();
             
-            // Double-check save with a slight delay
+            // Verify the move was saved correctly
             setTimeout(() => {
-                console.log("Double-checking save after move");
-                window.saveGameState();
-            }, 500);
+                firebase.database().ref('games/' + window.gameId).once('value')
+                    .then((snapshot) => {
+                        const serverData = snapshot.val();
+                        if (!serverData || !serverData.board) {
+                            console.error("Failed to save move to server");
+                            return;
+                        }
+                        
+                        console.log("Server board state:", JSON.stringify(serverData.board));
+                        
+                        // Check if server state matches our local state
+                        let serverBoardMatches = true;
+                        for (let i = 0; i < board.length; i++) {
+                            if (!serverData.board[i] && (!board[i] || board[i].length === 0)) {
+                                continue; // Both empty, that's fine
+                            }
+                            
+                            if (!serverData.board[i] || !board[i] || 
+                                serverData.board[i].length !== board[i].length) {
+                                serverBoardMatches = false;
+                                break;
+                            }
+                        }
+                        
+                        if (!serverBoardMatches) {
+                            console.error("Server board state doesn't match local state, retrying save");
+                            window.saveGameState();
+                        } else {
+                            console.log("Move successfully saved to server");
+                        }
+                    })
+                    .catch((error) => {
+                        console.error("Error verifying move save:", error);
+                    });
+            }, 1000);
+            
+            // Force redraw
+            if (typeof redrawBoard === 'function') {
+                redrawBoard();
+            }
         }
         
         // Check win condition
@@ -1091,6 +1140,20 @@ function executeMove() {
         } else if (dice.length === 0 || !hasLegalMoves()) {
             // Switch player
             switchPlayer();
+        }
+    } else {
+        // If move failed, roll back to original state
+        console.log("Move failed, rolling back to original state");
+        board = JSON.parse(JSON.stringify(originalBoard));
+        whiteBar = JSON.parse(JSON.stringify(originalWhiteBar));
+        blackBar = JSON.parse(JSON.stringify(originalBlackBar));
+        whiteBearOff = JSON.parse(JSON.stringify(originalWhiteBearOff));
+        blackBearOff = JSON.parse(JSON.stringify(originalBlackBearOff));
+        dice = JSON.parse(JSON.stringify(originalDice));
+        
+        // Force redraw
+        if (typeof redrawBoard === 'function') {
+            redrawBoard();
         }
     }
     

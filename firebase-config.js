@@ -93,7 +93,7 @@ function saveGameState() {
     const now = Date.now();
     
     // Check if we're trying to save too frequently, unless it's a forced update
-    if (now - lastUpdateTime < SAVE_THROTTLE && !window.forcePlayerOneUpdate) {
+    if (now - lastUpdateTime < SAVE_THROTTLE && !window.forcePlayerOneUpdate && !window.moveCompleted) {
         console.log("Throttling Firebase update (too frequent)");
         return;
     }
@@ -106,7 +106,7 @@ function saveGameState() {
     }
     
     // Skip saving if already updating from Firebase, unless it's a forced update
-    if (isCurrentlyUpdating && !window.forcePlayerOneUpdate) {
+    if (isCurrentlyUpdating && !window.forcePlayerOneUpdate && !window.moveCompleted) {
         console.log("Currently updating from Firebase, save skipped");
         return;
     }
@@ -122,24 +122,70 @@ function saveGameState() {
         
         // Check if this is a forced update from player 2 joining
         const isForceUpdate = window.forcePlayerOneUpdate === true;
+        const isMoveCompleted = window.moveCompleted === true;
         
         // Debug the board state before saving
         console.log("Board state before saving:", JSON.stringify(board));
         
+        // Create a deep copy of the board to avoid reference issues
+        const boardCopy = [];
+        if (board && Array.isArray(board)) {
+            for (let i = 0; i < board.length; i++) {
+                boardCopy[i] = [];
+                if (board[i] && Array.isArray(board[i])) {
+                    for (let j = 0; j < board[i].length; j++) {
+                        if (board[i][j] && board[i][j].color) {
+                            boardCopy[i].push({ color: board[i][j].color });
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Create deep copies of other arrays
+        const whiteBarCopy = [];
+        if (whiteBar && Array.isArray(whiteBar)) {
+            for (let i = 0; i < whiteBar.length; i++) {
+                whiteBarCopy.push({ color: 'white' });
+            }
+        }
+        
+        const blackBarCopy = [];
+        if (blackBar && Array.isArray(blackBar)) {
+            for (let i = 0; i < blackBar.length; i++) {
+                blackBarCopy.push({ color: 'black' });
+            }
+        }
+        
+        const whiteBearOffCopy = [];
+        if (whiteBearOff && Array.isArray(whiteBearOff)) {
+            for (let i = 0; i < whiteBearOff.length; i++) {
+                whiteBearOffCopy.push({ color: 'white' });
+            }
+        }
+        
+        const blackBearOffCopy = [];
+        if (blackBearOff && Array.isArray(blackBearOff)) {
+            for (let i = 0; i < blackBearOff.length; i++) {
+                blackBearOffCopy.push({ color: 'black' });
+            }
+        }
+        
         const gameData = {
-            board: board,
-            whiteBar: whiteBar,
-            blackBar: blackBar,
-            whiteBearOff: whiteBearOff,
-            blackBearOff: blackBearOff,
+            board: boardCopy,
+            whiteBar: whiteBarCopy,
+            blackBar: blackBarCopy,
+            whiteBearOff: whiteBearOffCopy,
+            blackBearOff: blackBearOffCopy,
             currentPlayer: currentPlayer,
-            dice: dice,
+            dice: dice ? [...dice] : [],
             diceRolled: diceRolled,
             gameStatus: gameStatus,
             player1Name: player1Name,
             player2Name: player2Name,
             gameStarted: bothPlayersJoined || isForceUpdate, // Set as started when both players joined or forced
             forceUpdate: isForceUpdate, // Special flag for player 1
+            moveCompleted: isMoveCompleted, // Flag for move completion
             version: gameStateVersion,
             timestamp: firebase.database.ServerValue.TIMESTAMP,
             lastMoveBy: playerRole // Add who made the last move
@@ -147,12 +193,10 @@ function saveGameState() {
         
         // Clear the force update flag
         window.forcePlayerOneUpdate = false;
+        window.moveCompleted = false;
         
-        // Use the serializer to prepare safe data
-        const safeData = prepareGameDataForSaving(gameData);
-        
-        // Debug the safe data
-        console.log("Safe data prepared for Firebase:", JSON.stringify(safeData.board));
+        // Debug the game data
+        console.log("Game data prepared for Firebase:", JSON.stringify(gameData.board));
         
         // Update local timestamp expectation
         localGameTimestamp = now;
@@ -160,7 +204,7 @@ function saveGameState() {
         console.log("Saving data to Firebase");
         
         // Use set instead of update to ensure complete replacement
-        firebase.database().ref('games/' + gameId).set(safeData)
+        firebase.database().ref('games/' + gameId).set(gameData)
             .then(() => {
                 console.log("Game state saved successfully, version:", gameStateVersion);
                 
@@ -343,9 +387,12 @@ function processFirebaseUpdate(gameData) {
         
         // Check for force update flag
         const isForceUpdate = gameData.forceUpdate === true;
+        const isMoveCompleted = gameData.moveCompleted === true;
         
         // Check if this update is from the other player
         const isFromOtherPlayer = gameData.lastMoveBy && gameData.lastMoveBy !== playerRole;
+        
+        console.log("Update from other player:", isFromOtherPlayer, "Force update:", isForceUpdate, "Move completed:", isMoveCompleted);
         
         // Update player names and trigger UI updates immediately
         let playersChanged = false;
@@ -403,7 +450,7 @@ function processFirebaseUpdate(gameData) {
             
             // Deep copy the board to avoid reference issues
             board = [];
-            for (let i = 0; i < gameData.board.length; i++) {
+            for (let i = 0; i < 24; i++) {
                 board[i] = [];
                 if (gameData.board[i] && gameData.board[i].length > 0) {
                     for (let j = 0; j < gameData.board[i].length; j++) {
@@ -421,6 +468,8 @@ function processFirebaseUpdate(gameData) {
             for (let i = 0; i < gameData.whiteBar.length; i++) {
                 whiteBar.push({ color: 'white' });
             }
+        } else {
+            whiteBar = [];
         }
         
         if (gameData.blackBar) {
@@ -428,6 +477,8 @@ function processFirebaseUpdate(gameData) {
             for (let i = 0; i < gameData.blackBar.length; i++) {
                 blackBar.push({ color: 'black' });
             }
+        } else {
+            blackBar = [];
         }
         
         if (gameData.whiteBearOff) {
@@ -435,6 +486,8 @@ function processFirebaseUpdate(gameData) {
             for (let i = 0; i < gameData.whiteBearOff.length; i++) {
                 whiteBearOff.push({ color: 'white' });
             }
+        } else {
+            whiteBearOff = [];
         }
         
         if (gameData.blackBearOff) {
@@ -442,10 +495,12 @@ function processFirebaseUpdate(gameData) {
             for (let i = 0; i < gameData.blackBearOff.length; i++) {
                 blackBearOff.push({ color: 'black' });
             }
+        } else {
+            blackBearOff = [];
         }
         
         if (gameData.currentPlayer) currentPlayer = gameData.currentPlayer;
-        if (gameData.dice) dice = gameData.dice;
+        if (gameData.dice) dice = Array.isArray(gameData.dice) ? [...gameData.dice] : [];
         if (gameData.diceRolled !== undefined) diceRolled = gameData.diceRolled;
         if (gameData.gameStatus) gameStatus = gameData.gameStatus;
         if (gameData.gameStarted) gameStarted = gameData.gameStarted;
@@ -456,9 +511,15 @@ function processFirebaseUpdate(gameData) {
         }
         
         // If this was a move from the other player, redraw the board
-        if (isFromOtherPlayer && typeof redrawBoard === 'function') {
-            console.log("Redrawing board after other player's move");
+        if ((isFromOtherPlayer || isMoveCompleted) && typeof redrawBoard === 'function') {
+            console.log("Redrawing board after update");
             redrawBoard();
+            
+            // Force a second redraw after a short delay to ensure it's visible
+            setTimeout(() => {
+                redrawBoard();
+                console.log("Forced second redraw after update");
+            }, 500);
         }
         
     } catch (error) {
