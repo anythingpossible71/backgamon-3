@@ -184,10 +184,7 @@
         BACKGAMMON VERSION 8.0.0 - AUTO-REFRESH FIX
     </div>
     
-    <!-- Auto-refresh status indicator -->
-    <div id="sync-status" style="position: fixed; top: 30px; right: 10px; background-color: #34c759; color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 9999; opacity: 0.7;">
-        Syncing...
-    </div>
+    <!-- Removing sync status indicator -->
     
     <!-- Anti-caching script -->
     <script>
@@ -271,21 +268,6 @@
             </div>
             
             <div id="game-status">Waiting for players...</div>
-            
-            <!-- MANUAL SYNC BUTTONS (UPDATED) -->
-            <div style="margin-top: 20px; text-align: center; background-color: #03a9f4; padding: 10px; border-radius: 8px;">
-                <h3 style="margin-top: 0; color: white;">POLLING SYNC CONTROLS</h3>
-                <p style="color: white;">The game automatically checks for updates every 2 seconds. Use these buttons to force an immediate update:</p>
-                <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 10px;">
-                    <button id="refresh-button" style="background-color: #0277bd; font-size: 18px; padding: 12px 24px;">
-                        <span style="font-weight: bold;">↻</span> REFRESH GAME STATE
-                    </button>
-                </div>
-                <div style="display: flex; justify-content: center; gap: 10px;">
-                    <button id="sync-send-button" style="background-color: #0277bd;">SAVE MY STATE</button>
-                    <button id="sync-get-button" style="background-color: #0277bd;">FORCE FETCH</button>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -658,36 +640,6 @@
             }
         }
         
-        // Add manual sync button handlers
-        document.getElementById('sync-send-button').addEventListener('click', function() {
-            console.log("MANUAL: Saving current game state");
-            if (typeof saveGameState === 'function') {
-                saveGameState();
-                alert("Your game state has been saved!");
-            }
-        });
-        
-        document.getElementById('sync-get-button').addEventListener('click', function() {
-            console.log("MANUAL: Forcing state fetch");
-            if (typeof loadGameState === 'function') {
-                loadGameState();
-                alert("Latest game state has been fetched!");
-            }
-        });
-        
-        // New refresh button
-        document.getElementById('refresh-button').addEventListener('click', function() {
-            console.log("REFRESH: Manual refresh requested");
-            if (typeof fetchLatestState === 'function') {
-                fetchLatestState();
-                // Don't show alert to avoid excessive popups
-                this.textContent = "✓ REFRESHED";
-                setTimeout(() => {
-                    this.innerHTML = "<span style='font-weight: bold;'>↻</span> REFRESH GAME STATE";
-                }, 1500);
-            }
-        });
-        
         // Initialize on page load
         window.onload = function() {
             debugLog("Window loaded, initializing game...");
@@ -896,21 +848,6 @@
             let refreshCount = 0;
             const REFRESH_INTERVAL = 3000; // 3 seconds between auto-refreshes
             
-            // Function to update sync status indicator
-            function updateSyncStatus(status, color) {
-                const statusEl = document.getElementById('sync-status');
-                if (statusEl) {
-                    statusEl.style.backgroundColor = color;
-                    statusEl.textContent = status;
-                    
-                    // Flash effect
-                    statusEl.style.opacity = "1";
-                    setTimeout(() => {
-                        statusEl.style.opacity = "0.7";
-                    }, 500);
-                }
-            }
-            
             // Function to perform auto-refresh
             function performAutoRefresh() {
                 try {
@@ -921,8 +858,6 @@
                     
                     refreshCount++;
                     lastRefreshTime = currentTime;
-                    
-                    updateSyncStatus(`Sync #${refreshCount}`, '#34c759');
                     
                     // Check if board has checkers
                     let hasCheckers = false;
@@ -966,7 +901,6 @@
                     }
                 } catch (error) {
                     console.error("Error during refresh:", error);
-                    updateSyncStatus("Sync Error", '#ff3b30');
                 }
             }
             
