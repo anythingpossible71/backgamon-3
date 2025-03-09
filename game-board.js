@@ -350,97 +350,99 @@ function drawValidMoves(p) {
     try {
         if (!selectedChecker) return;
         
-        let validMoves = [];
-        let fromPoint = selectedChecker.pointIndex;
-        
-        // If checker is on the bar, use -1 as the from point
-        if (fromPoint === -1) {
-            // Bar moves
-            if (currentPlayer === 'player1') {
-                // White player (moving from bar to 24-die)
-                for (let i = 0; i < dice.length; i++) {
-                    if (dice[i] && !dice[i].used) {
-                        const toPoint = 24 - dice[i].value;
-                        if (isValidMove(-1, toPoint)) {
-                            validMoves.push(toPoint);
-                        }
-                    }
-                }
-            } else {
-                // Black player (moving from bar to die-1)
-                for (let i = 0; i < dice.length; i++) {
-                    if (dice[i] && !dice[i].used) {
-                        const toPoint = dice[i].value - 1;
-                        if (isValidMove(-1, toPoint)) {
-                            validMoves.push(toPoint);
-                        }
-                    }
-                }
-            }
-        } else {
-            // Regular moves
-            for (let i = 0; i < dice.length; i++) {
-                if (dice[i] && !dice[i].used) {
-                    let toPoint;
-                    
-                    if (currentPlayer === 'player1') {
-                        // White player (moving clockwise)
-                        toPoint = fromPoint + dice[i].value;
-                        
-                        // Check for bear-off
-                        if (toPoint > 23) {
-                            if (canPlayerBearOff('white') && isValidBearOff(fromPoint, dice[i].value, 'white')) {
-                                // Valid bear-off move
-                                validMoves.push(24); // Use 24 to represent bear-off
-                            }
-                        } else if (isValidMove(fromPoint, toPoint)) {
-                            validMoves.push(toPoint);
-                        }
-                    } else {
-                        // Black player (moving counter-clockwise)
-                        toPoint = fromPoint - dice[i].value;
-                        
-                        // Check for bear-off
-                        if (toPoint < 0) {
-                            if (canPlayerBearOff('black') && isValidBearOff(fromPoint, dice[i].value, 'black')) {
-                                // Valid bear-off move
-                                validMoves.push(-1); // Use -1 to represent bear-off
-                            }
-                        } else if (isValidMove(fromPoint, toPoint)) {
-                            validMoves.push(toPoint);
-                        }
-                    }
-                }
-            }
+        // Use the global validMoves array calculated by game-logic.js
+        if (!window.validMoves || !Array.isArray(window.validMoves)) {
+            console.log("No valid moves available");
+            return;
         }
         
-        // Draw valid move indicators
-        p.noStroke();
-        p.fill(0, 255, 0, 100); // Semi-transparent green
+        console.log("Drawing valid moves:", window.validMoves);
         
-        for (let i = 0; i < validMoves.length; i++) {
-            const toPoint = validMoves[i];
+        // Draw valid move indicators with more visible highlighting
+        p.noStroke();
+        p.fill(0, 255, 0, 150); // Semi-transparent green with higher opacity
+        
+        for (let i = 0; i < window.validMoves.length; i++) {
+            const toPoint = window.validMoves[i];
             
             if (toPoint === 24) {
                 // White bear-off
                 const x = BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2;
                 const y = BOARD_HEIGHT/2;
-                p.circle(x, y, CHECKER_RADIUS * 2);
+                
+                // Draw a larger highlight for bear-off
+                p.circle(x, y, CHECKER_RADIUS * 3);
+                
+                // Add a pulsing effect
+                const pulseSize = Math.sin(p.frameCount * 0.1) * 10 + 5;
+                p.stroke(255, 255, 0);
+                p.strokeWeight(2);
+                p.noFill();
+                p.circle(x, y, CHECKER_RADIUS * 3 + pulseSize);
             } else if (toPoint === -1) {
                 // Black bear-off
                 const x = BEAR_OFF_WIDTH/2;
                 const y = BOARD_HEIGHT/2;
-                p.circle(x, y, CHECKER_RADIUS * 2);
+                
+                // Draw a larger highlight for bear-off
+                p.circle(x, y, CHECKER_RADIUS * 3);
+                
+                // Add a pulsing effect
+                const pulseSize = Math.sin(p.frameCount * 0.1) * 10 + 5;
+                p.stroke(255, 255, 0);
+                p.strokeWeight(2);
+                p.noFill();
+                p.circle(x, y, CHECKER_RADIUS * 3 + pulseSize);
             } else {
                 // Regular move
                 const x = getPointX(toPoint);
-                const y = getPointY(toPoint);
                 
-                // Draw at the position where the checker would go
-                const checkerCount = board[toPoint] ? board[toPoint].length : 0;
-                const checkerY = getCheckerY(toPoint, checkerCount);
-                
-                p.circle(x, checkerY, CHECKER_RADIUS * 2);
+                // For regular points, highlight the entire point
+                if (toPoint < 12) {
+                    // Bottom row
+                    p.fill(0, 255, 0, 100);
+                    p.triangle(
+                        x - POINT_WIDTH/2, BOARD_HEIGHT,
+                        x + POINT_WIDTH/2, BOARD_HEIGHT,
+                        x, BOARD_HEIGHT - POINT_HEIGHT
+                    );
+                    
+                    // Draw a circle at the position where the checker would go
+                    const checkerCount = board[toPoint] ? board[toPoint].length : 0;
+                    const checkerY = getCheckerY(toPoint, checkerCount);
+                    
+                    p.fill(0, 255, 0, 150);
+                    p.circle(x, checkerY, CHECKER_RADIUS * 2.5);
+                    
+                    // Add a pulsing effect
+                    const pulseSize = Math.sin(p.frameCount * 0.1) * 5 + 2;
+                    p.stroke(255, 255, 0);
+                    p.strokeWeight(2);
+                    p.noFill();
+                    p.circle(x, checkerY, CHECKER_RADIUS * 2.5 + pulseSize);
+                } else {
+                    // Top row
+                    p.fill(0, 255, 0, 100);
+                    p.triangle(
+                        x - POINT_WIDTH/2, 0,
+                        x + POINT_WIDTH/2, 0,
+                        x, POINT_HEIGHT
+                    );
+                    
+                    // Draw a circle at the position where the checker would go
+                    const checkerCount = board[toPoint] ? board[toPoint].length : 0;
+                    const checkerY = getCheckerY(toPoint, checkerCount);
+                    
+                    p.fill(0, 255, 0, 150);
+                    p.circle(x, checkerY, CHECKER_RADIUS * 2.5);
+                    
+                    // Add a pulsing effect
+                    const pulseSize = Math.sin(p.frameCount * 0.1) * 5 + 2;
+                    p.stroke(255, 255, 0);
+                    p.strokeWeight(2);
+                    p.noFill();
+                    p.circle(x, checkerY, CHECKER_RADIUS * 2.5 + pulseSize);
+                }
             }
         }
     } catch (error) {

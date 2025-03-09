@@ -1,4 +1,4 @@
-// game-logic.js - Version 10.0.0
+// game-logic.js - Version 10.1.0
 // This file handles game mechanics, moves, and rules
 // Local Two-Player Mode
 
@@ -60,8 +60,9 @@ function mousePressed() {
             
             if (dist(mouseX, mouseY, barX, barY) < CHECKER_RADIUS * 2) {
                 selectedChecker = { pointIndex: -1, checkerIndex: 0 };
-                calculateValidMoves(-1, dice);
-                console.log("Selected checker from bar");
+                // Calculate valid moves and store in global variable
+                window.validMoves = calculateValidMoves(-1, dice);
+                console.log("Selected checker from bar, valid moves:", window.validMoves);
                 return;
             }
             
@@ -83,8 +84,9 @@ function mousePressed() {
                     
                     if (dist(mouseX, mouseY, pointX, checkerY) < CHECKER_RADIUS) {
                         selectedChecker = { pointIndex: i, checkerIndex: j };
-                        calculateValidMoves(i, dice);
-                        console.log("Selected checker at point", { point: i, checker: j });
+                        // Calculate valid moves and store in global variable
+                        window.validMoves = calculateValidMoves(i, dice);
+                        console.log("Selected checker at point", { point: i, checker: j, validMoves: window.validMoves });
                         return;
                     }
                 }
@@ -562,12 +564,11 @@ function calculateValidMoves(pointIndex, dice) {
         console.log("Calculating valid moves from point:", pointIndex);
         
         // Reset valid moves
-        validMoves = [];
-        combinedMoves = [];
+        window.validMoves = [];
         
         if (!dice || dice.length === 0) {
             console.log("No dice available");
-            return;
+            return [];
         }
         
         let playerColor = currentPlayer === 'player1' ? 'white' : 'black';
@@ -590,8 +591,8 @@ function calculateValidMoves(pointIndex, dice) {
                 if (playerColor === 'white') {
                     if (pointIndex >= 18) { // Only allow bearing off from home board
                         if (targetIndex >= 24 || (die.value > 24 - pointIndex && isValidBearOff(pointIndex, die.value, playerColor))) {
-                            if (!validMoves.includes(24)) {
-                                validMoves.push(24); // Special target index for bearing off
+                            if (!window.validMoves.includes(24)) {
+                                window.validMoves.push(24); // Special target index for bearing off
                                 console.log("Valid bearing off move for white");
                             }
                             continue;
@@ -600,8 +601,8 @@ function calculateValidMoves(pointIndex, dice) {
                 } else { // Black player
                     if (pointIndex <= 5) { // Only allow bearing off from home board
                         if (targetIndex < 0 || (die.value > pointIndex + 1 && isValidBearOff(pointIndex, die.value, playerColor))) {
-                            if (!validMoves.includes(-1)) {
-                                validMoves.push(-1); // Special target index for bearing off
+                            if (!window.validMoves.includes(-1)) {
+                                window.validMoves.push(-1); // Special target index for bearing off
                                 console.log("Valid bearing off move for black");
                             }
                             continue;
@@ -617,16 +618,16 @@ function calculateValidMoves(pointIndex, dice) {
                 if (targetPoint.length === 0 ||
                     (targetPoint.length > 0 && targetPoint[0].color === playerColor) ||
                     (targetPoint.length === 1 && targetPoint[0].color !== playerColor)) {
-                    if (!validMoves.includes(targetIndex)) {
-                        validMoves.push(targetIndex);
+                    if (!window.validMoves.includes(targetIndex)) {
+                        window.validMoves.push(targetIndex);
                         console.log("Valid normal move to point:", targetIndex);
                     }
                 }
             }
         }
         
-        console.log("Valid moves calculated:", validMoves);
-        return validMoves;
+        console.log("Valid moves calculated:", window.validMoves);
+        return window.validMoves;
     } catch (error) {
         console.error("Error calculating valid moves:", error);
         return [];
@@ -1030,7 +1031,7 @@ console.log("Game logic loaded successfully");
 
 // Function to display the version name on the screen
 function displayVersionName() {
-    const versionName = "Version 10.0.0 - Local Mode";
+    const versionName = "Version 10.1.0 - Local Mode";
     const versionElement = document.createElement('div');
     versionElement.id = 'version-name';
     versionElement.style.position = 'absolute';

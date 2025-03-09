@@ -1,4 +1,4 @@
-// VERSION 10.0.0 - LOCAL TWO-PLAYER MODE
+// VERSION 10.1.0 - LOCAL TWO-PLAYER MODE
 // firebase-config.js - Simplified for local gameplay
 
 // Local Game State Manager
@@ -19,7 +19,7 @@ function initializeGameState() {
         whiteBearOff: [],
         blackBearOff: [],
         gameStatus: 'Game ready to start. Player 1 to roll.',
-        version: '10.0.0'
+        version: '10.1.0'
     };
 
     // Set up initial board position
@@ -73,7 +73,7 @@ function displayVersionBanner() {
     versionBanner.style.borderRadius = '5px';
     versionBanner.style.zIndex = '1000';
     versionBanner.style.fontSize = '14px';
-    versionBanner.textContent = 'Version 10.0.0 - Local Mode';
+    versionBanner.textContent = 'Version 10.1.0 - Local Mode';
     document.body.appendChild(versionBanner);
 }
 
@@ -369,7 +369,7 @@ function updateDebugInfo() {
     const syncStatus = syncAge < 10000 ? "GOOD" : syncAge < 30000 ? "STALE" : "OLD";
     
     debugInfo.innerHTML = `
-      <strong>VERSION:</strong> 10.0.0 LOCAL MODE<br>
+      <strong>VERSION:</strong> 10.1.0 LOCAL MODE<br>
       <strong>Current Player:</strong> ${currentPlayer}<br>
       <strong>Dice:</strong> ${JSON.stringify(dice)}<br>
       <strong>Board Status:</strong> ${hasBoardData(board) ? "HAS PIECES" : "EMPTY!"}<br>
