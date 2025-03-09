@@ -134,15 +134,36 @@ function createP5Instance() {
         
         // Mouse event handlers
         p.mousePressed = function() {
-            if (typeof mousePressed === 'function') {
-                mousePressed();
+            // Store mouse coordinates in global variables for game-logic.js
+            window.mouseX = p.mouseX;
+            window.mouseY = p.mouseY;
+            
+            // Call the game logic mousePressed function
+            if (typeof window.mousePressed === 'function') {
+                window.mousePressed();
             }
+            
+            // Prevent default browser behavior
+            return false;
         };
         
         p.mouseReleased = function() {
-            if (typeof mouseReleased === 'function') {
-                mouseReleased();
+            // Store mouse coordinates in global variables for game-logic.js
+            window.mouseX = p.mouseX;
+            window.mouseY = p.mouseY;
+            
+            // Call the game logic mouseReleased function
+            if (typeof window.mouseReleased === 'function') {
+                window.mouseReleased();
             }
+            
+            // Prevent default browser behavior
+            return false;
+        };
+        
+        // Helper function for distance calculation
+        window.dist = function(x1, y1, x2, y2) {
+            return p.dist(x1, y1, x2, y2);
         };
     };
     

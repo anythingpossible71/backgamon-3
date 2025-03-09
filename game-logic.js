@@ -18,6 +18,11 @@ let lockTimeout = null;
 let revertCheckInterval = null;
 const LOCK_DURATION = 10000; // 10 seconds lock after moves
 
+// Game state variables
+let selectedChecker = null;
+let validMoves = [];
+let combinedMoves = [];
+
 // Mouse interaction functions with throttling
 function mousePressed() {
     // Throttle to prevent rapid clicks
@@ -1232,3 +1237,17 @@ function displayVersionName() {
 // Remove the automatic event listener to avoid duplicate version displays
 // The version is already displayed by firebase-config.js's displayVersionBanner function
 // window.addEventListener('DOMContentLoaded', displayVersionName);
+
+// Expose functions to window object
+window.mousePressed = mousePressed;
+window.mouseReleased = mouseReleased;
+window.canPlayerMove = canPlayerMove;
+window.calculateValidMoves = calculateValidMoves;
+window.isValidMove = isValidMove;
+window.executeMove = executeMove;
+window.dist = dist;
+
+// Helper function to calculate distance between two points
+function dist(x1, y1, x2, y2) {
+    return Math.sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+}
