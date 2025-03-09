@@ -106,14 +106,6 @@ function mouseReleased() {
     lastMouseEvent = currentTime;
     
     try {
-        if (!canPlayerMove()) {
-            console.log("Cannot move - not your turn");
-            selectedChecker = null;
-            validMoves = [];
-            combinedMoves = [];
-            return;
-        }
-        
         if (!selectedChecker) {
             console.log("No checker selected");
             return;
@@ -125,315 +117,228 @@ function mouseReleased() {
             console.log("Game already won");
             selectedChecker = null;
             validMoves = [];
-            combinedMoves = [];
             return;
         }
         
-        let moved = false;
+        let fromPoint = selectedChecker.pointIndex;
         let playerColor = currentPlayer === 'player1' ? 'white' : 'black';
         
-        // Check valid moves (including combined moves)
-        let allPossibleMoves = [...validMoves];
-        let combinedMoveIndices = [];
-        
-        // Add combined move target indices
-        for (let i = 0; i < combinedMoves.length; i++) {
-            allPossibleMoves.push(combinedMoves[i].targetIndex);
-            combinedMoveIndices.push(allPossibleMoves.length - 1);
-        }
-        
-        console.log("Checking possible moves:", { validMoves: validMoves, combinedMoves: combinedMoves });
-        
-        for (let i = 0; i < allPossibleMoves.length; i++) {
-            const pointIndex = allPossibleMoves[i];
-            const isCombinedMove = combinedMoveIndices.includes(i);
+        // Check if mouse is over a valid move point
+        for (let i = 0; i < validMoves.length; i++) {
+            const toPoint = validMoves[i];
             
             // Handle bearing off
-            if ((playerColor === 'white' && pointIndex === 24) || 
-                (playerColor === 'black' && pointIndex === -1)) {
+            if ((playerColor === 'white' && toPoint === 24) || 
+                (playerColor === 'black' && toPoint === -1)) {
                 
-                let checker;
+                // Check if mouse is over bear-off area
+                const bearOffX = playerColor === 'white' ? 
+                    BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2 : 
+                    BEAR_OFF_WIDTH/2;
+                const bearOffY = BOARD_HEIGHT/2;
                 
-                if (selectedChecker.pointIndex === -1) {
-                    checker = playerColor === 'white' ? whiteBar.pop() : blackBar.pop();
-                    console.log("Taking checker from bar for bearing off");
-                } else {
-                    checker = board[selectedChecker.pointIndex].splice(selectedChecker.checkerIndex, 1)[0];
-                    console.log("Taking checker from point for bearing off:", selectedChecker.pointIndex);
-                }
-                
-                if (playerColor === 'white') {
-                    whiteBearOff.push(checker);
-                    console.log("White checker borne off, total:", whiteBearOff.length);
-                    
-                    if (whiteBearOff.length === 15) {
-                        gameStatus = player1Name + " wins the game!";
-                        dice = [];
-                        diceRolled = false;
-                        selectedChecker = null;
-                        validMoves = [];
-                        combinedMoves = [];
-                        moved = true;
-                        
-                        console.log("White wins the game!");
-                        // Save final game state
-                        saveGameStateThrottled();
-                        break;
-                    } else {
-                        gameStatus = 'White checker borne off!';
-                    }
-                } else {
-                    blackBearOff.push(checker);
-                    console.log("Black checker borne off, total:", blackBearOff.length);
-                    
-                    if (blackBearOff.length === 15) {
-                        gameStatus = player2Name + " wins the game!";
-                        dice = [];
-                        diceRolled = false;
-                        selectedChecker = null;
-                        validMoves = [];
-                        combinedMoves = [];
-                        moved = true;
-                        
-                        console.log("Black wins the game!");
-                        // Save final game state
-                        saveGameStateThrottled();
-                        break;
-                    } else {
-                        gameStatus = 'Black checker borne off!';
-                    }
-                }
-                
-                // Handle dice removal
-                if (isCombinedMove) {
-                    // Use both dice for combined move
-                    let combinedMove = combinedMoves[i - validMoves.length];
-                    // Remove the specific dice used
-                    let dieIndex1 = dice.indexOf(combinedMove.die1);
-                    if (dieIndex1 !== -1) dice.splice(dieIndex1, 1);
-                    
-                    let dieIndex2 = dice.indexOf(combinedMove.die2);
-                    if (dieIndex2 !== -1) dice.splice(dieIndex2, 1);
-                    
-                    console.log("Used combined dice:", combinedMove.die1, combinedMove.die2);
-                } else {
-                    // Remove one die
-                    if (dice.length > 0) {
-                        dice.splice(0, 1);
-                        console.log("Used one die for bearing off, remaining dice:", dice);
-                    }
-                }
-                
-                moved = true;
-                break;
-            }
-
-            // Normal move within the board
-            let pointX = getPointX(pointIndex);
-            let pointY = getPointY(pointIndex);
-            let pointTop = pointIndex < 12 ? pointY - POINT_HEIGHT : pointY;
-            let pointBottom = pointIndex < 12 ? pointY : pointY + POINT_HEIGHT;
-            
-            if (mouseX >= pointX - POINT_WIDTH/2 && mouseX <= pointX + POINT_WIDTH/2 &&
-                mouseY >= pointTop && mouseY <= pointBottom) {
-                
-                let checker;
-                
-                if (selectedChecker.pointIndex === -1) {
-                    checker = playerColor === 'white' ? whiteBar.pop() : blackBar.pop();
-                    console.log("Moving checker from bar to point:", pointIndex);
-                } else {
-                    checker = board[selectedChecker.pointIndex].splice(selectedChecker.checkerIndex, 1)[0];
-                    console.log("Moving checker from point", selectedChecker.pointIndex, "to point", pointIndex);
-                }
-                
-                // Check if hitting opponent's checker
-                if (board[pointIndex].length === 1 && board[pointIndex][0].color !== checker.color) {
-                    let hitChecker = board[pointIndex].pop();
-                    if (hitChecker.color === 'white') {
-                        whiteBar.push(hitChecker);
-                        gameStatus = "White checker was hit!";
-                        console.log("White checker was hit and moved to bar");
-                    } else {
-                        blackBar.push(hitChecker);
-                        gameStatus = "Black checker was hit!";
-                        console.log("Black checker was hit and moved to bar");
-                    }
-                }
-                
-                board[pointIndex].push(checker);
-                
-                // Handle dice removal for normal moves
-                if (isCombinedMove) {
-                    // Use both dice for combined move
-                    let combinedMove = combinedMoves[i - validMoves.length];
-                    // Remove the specific dice used
-                    let dieIndex1 = dice.indexOf(combinedMove.die1);
-                    if (dieIndex1 !== -1) dice.splice(dieIndex1, 1);
-                    
-                    let dieIndex2 = dice.indexOf(combinedMove.die2);
-                    if (dieIndex2 !== -1) dice.splice(dieIndex2, 1);
-                    
-                    console.log("Used combined dice:", combinedMove.die1, combinedMove.die2);
-                } else {
-                    // Remove one die
-                    if (dice.length > 0) {
-                        // Calculate which die was used
-                        let die;
-                        if (selectedChecker.pointIndex === -1) {
-                            // From bar
-                            die = playerColor === 'white' ? pointIndex + 1 : 24 - pointIndex;
-                        } else {
-                            // Normal move
-                            die = Math.abs(pointIndex - selectedChecker.pointIndex);
+                if (dist(mouseX, mouseY, bearOffX, bearOffY) < CHECKER_RADIUS * 2) {
+                    if (executeMove(fromPoint, toPoint)) {
+                        // Check if all dice are used
+                        let allDiceUsed = true;
+                        for (let j = 0; j < dice.length; j++) {
+                            if (!dice[j].used) {
+                                allDiceUsed = false;
+                                break;
+                            }
                         }
                         
-                        // Find and remove the die that was used
-                        let dieIndex = dice.indexOf(die);
-                        if (dieIndex !== -1) {
-                            dice.splice(dieIndex, 1);
-                            console.log("Used die:", die);
-                        } else {
-                            // If exact die not found, use first available die
-                            console.log("No exact die match, using first available die:", dice[0]);
-                            dice.splice(0, 1);
+                        // If all dice are used, switch player
+                        if (allDiceUsed) {
+                            setTimeout(() => {
+                                switchPlayer();
+                            }, 500);
                         }
                         
-                        console.log("Remaining dice:", dice);
+                        // Check for win
+                        if ((playerColor === 'white' && whiteBearOff.length === 15) || 
+                            (playerColor === 'black' && blackBearOff.length === 15)) {
+                            gameStatus = (playerColor === 'white' ? 'Player 1' : 'Player 2') + " wins!";
+                            if (typeof updateGameStatus === 'function') {
+                                updateGameStatus();
+                            }
+                        }
+                        
+                        // Update UI
+                        if (typeof updatePlayerInfo === 'function') {
+                            updatePlayerInfo();
+                        }
+                        
+                        // Save game state
+                        saveGameStateThrottled();
                     }
+                    
+                    selectedChecker = null;
+                    validMoves = [];
+                    return;
                 }
+            }
+            
+            // Handle regular move
+            if (toPoint >= 0 && toPoint < 24) {
+                const pointX = getPointX(toPoint);
+                const pointY = getPointY(toPoint);
+                const checkerCount = board[toPoint] ? board[toPoint].length : 0;
+                const checkerY = getCheckerY(toPoint, checkerCount);
                 
-                moved = true;
-                
-                if (gameStatus.indexOf("checker was hit") === -1 && 
-                    gameStatus.indexOf("borne off") === -1) {
-                    gameStatus = currentPlayer === 'player1' ? 
-                        player1Name + ' made a move!' : player2Name + ' made a move!';
+                if (dist(mouseX, mouseY, pointX, checkerY) < CHECKER_RADIUS * 2) {
+                    if (executeMove(fromPoint, toPoint)) {
+                        // Check if all dice are used
+                        let allDiceUsed = true;
+                        for (let j = 0; j < dice.length; j++) {
+                            if (!dice[j].used) {
+                                allDiceUsed = false;
+                                break;
+                            }
+                        }
+                        
+                        // If all dice are used, switch player
+                        if (allDiceUsed) {
+                            setTimeout(() => {
+                                switchPlayer();
+                            }, 500);
+                        }
+                        
+                        // Update UI
+                        if (typeof updatePlayerInfo === 'function') {
+                            updatePlayerInfo();
+                        }
+                        
+                        // Save game state
+                        saveGameStateThrottled();
+                    }
+                    
+                    selectedChecker = null;
+                    validMoves = [];
+                    return;
                 }
-                
-                break;
             }
         }
         
-        if (!moved && selectedChecker.pointIndex !== -1) {
-            gameStatus = "Invalid move! Try again.";
-            console.log("Invalid move attempted");
-        }
-        
-        // Check for win or end of turn
-        if (moved) {
-            console.log("Move completed, checking game state");
-            
-            // Update UI directly to prevent loops
-            updateUIDirectly();
-            
-            // Check win condition
-            if ((playerColor === 'white' && whiteBearOff.length === 15) ||
-                (playerColor === 'black' && blackBearOff.length === 15)) {
-                checkWinCondition();
-            } else if (dice.length === 0 || !hasLegalMoves()) {
-                // Switch player
-                switchPlayer();
-            }
-            
-            // Save game state after move
-            saveGameStateThrottled();
-        }
-        
+        // If we get here, no valid move was made
         selectedChecker = null;
         validMoves = [];
-        combinedMoves = [];
         
     } catch (error) {
         console.error("Error in mouseReleased:", error);
         selectedChecker = null;
         validMoves = [];
-        combinedMoves = [];
     }
 }
 
 // Game mechanics functions
 function executeMove(fromPoint, toPoint) {
-    console.log("Executing move from", fromPoint, "to", toPoint);
-    
     try {
-        // Set move in progress flag
-        window.moveInProgress = true;
+        console.log("Executing move from", fromPoint, "to", toPoint);
         
-        // Store previous state before any changes
-        const previousState = {
-            board: JSON.parse(JSON.stringify(board)),
-            whiteBar: [...whiteBar],
-            blackBar: [...blackBar],
-            whiteBearOff: [...whiteBearOff],
-            blackBearOff: [...blackBearOff],
-            dice: [...dice],
-            diceRolled: diceRolled,
-            currentPlayer: currentPlayer
-        };
-
-        // Make the move
-        const checker = removeChecker(fromPoint);
-        if (!checker) {
-            console.error("No checker found at point", fromPoint);
-            window.moveInProgress = false;
-            return false;
-        }
+        let playerColor = currentPlayer === 'player1' ? 'white' : 'black';
+        let direction = playerColor === 'white' ? 1 : -1;
         
-        // Add checker to new position
-        addChecker(toPoint, checker.color);
-        
-        // Find and remove the used dice value
-        const moveDistance = Math.abs(fromPoint - toPoint);
-        const diceIndex = dice.indexOf(moveDistance);
-        if (diceIndex !== -1) {
-            dice.splice(diceIndex, 1);
-        }
-        
-        // Log the move details
-        console.log("Move completed: ", {
-            from: fromPoint,
-            to: toPoint,
-            color: checker.color,
-            remainingDice: [...dice]
-        });
-
-        // Force immediate UI updates
-        updateUIDirectly();
-        
-        // CRITICAL: Save state immediately after move
-        if (typeof window.saveGameState === 'function') {
-            console.log("MOVE: Immediate save after move");
-            window.saveGameState();
+        // Handle bearing off
+        if ((playerColor === 'white' && toPoint === 24) || 
+            (playerColor === 'black' && toPoint === -1)) {
             
-            // Additional saves with increasing delays
-            setTimeout(() => {
-                if (typeof window.saveGameState === 'function') {
-                    console.log("MOVE: Second save after move");
-                    window.saveGameState();
+            // Get the checker
+            let checker;
+            if (fromPoint === -1) {
+                // Moving from bar
+                checker = playerColor === 'white' ? whiteBar.pop() : blackBar.pop();
+            } else {
+                // Moving from a point
+                checker = board[fromPoint].pop();
+            }
+            
+            // Add to bear off area
+            if (playerColor === 'white') {
+                whiteBearOff.push(checker);
+            } else {
+                blackBearOff.push(checker);
+            }
+            
+            // Mark the appropriate die as used
+            let dieValue = Math.abs(toPoint - fromPoint);
+            for (let i = 0; i < dice.length; i++) {
+                if (!dice[i].used && dice[i].value >= dieValue) {
+                    dice[i].used = true;
+                    break;
                 }
-            }, 500);
-        }
-
-        // If no more moves possible, switch player after a delay
-        if (dice.length === 0 || !hasLegalMoves()) {
-            setTimeout(() => {
-                if (typeof switchPlayer === 'function') {
-                    switchPlayer();
-                }
-                window.moveInProgress = false;
-            }, 1000);
-        } else {
-            // Clear move in progress after a short delay
-            setTimeout(() => {
-                window.moveInProgress = false;
-            }, 500);
+            }
+            
+            console.log("Checker borne off");
+            return true;
         }
         
+        // Handle moving from bar
+        if (fromPoint === -1) {
+            let checker;
+            if (playerColor === 'white') {
+                checker = whiteBar.pop();
+            } else {
+                checker = blackBar.pop();
+            }
+            
+            // Check if there's an opponent's checker
+            if (board[toPoint].length === 1 && board[toPoint][0].color !== playerColor) {
+                let opponentChecker = board[toPoint].pop();
+                if (opponentChecker.color === 'white') {
+                    whiteBar.push(opponentChecker);
+                } else {
+                    blackBar.push(opponentChecker);
+                }
+                console.log("Opponent's checker sent to bar");
+            }
+            
+            // Add checker to target point
+            board[toPoint].push(checker);
+            
+            // Mark the appropriate die as used
+            let dieValue = playerColor === 'white' ? toPoint + 1 : 24 - toPoint;
+            for (let i = 0; i < dice.length; i++) {
+                if (!dice[i].used && dice[i].value === dieValue) {
+                    dice[i].used = true;
+                    break;
+                }
+            }
+            
+            console.log("Moved from bar to", toPoint);
+            return true;
+        }
+        
+        // Regular move
+        let checker = board[fromPoint].pop();
+        
+        // Check if there's an opponent's checker
+        if (board[toPoint].length === 1 && board[toPoint][0].color !== playerColor) {
+            let opponentChecker = board[toPoint].pop();
+            if (opponentChecker.color === 'white') {
+                whiteBar.push(opponentChecker);
+            } else {
+                blackBar.push(opponentChecker);
+            }
+            console.log("Opponent's checker sent to bar");
+        }
+        
+        // Add checker to target point
+        board[toPoint].push(checker);
+        
+        // Mark the appropriate die as used
+        let dieValue = Math.abs(toPoint - fromPoint);
+        for (let i = 0; i < dice.length; i++) {
+            if (!dice[i].used && dice[i].value === dieValue) {
+                dice[i].used = true;
+                break;
+            }
+        }
+        
+        console.log("Moved from", fromPoint, "to", toPoint);
         return true;
     } catch (error) {
         console.error("Error executing move:", error);
-        window.moveInProgress = false;
         return false;
     }
 }
@@ -600,36 +505,39 @@ function rollDice() {
 }
 
 function switchPlayer() {
-    console.log("Switching player");
-    
-    // Set move in progress during player switch
-    window.moveInProgress = true;
-    
-    // Reset dice
-    dice = [];
-    diceRolled = false;
-    
-    // Switch current player
-    currentPlayer = currentPlayer === 'player1' ? 'player2' : 'player1';
-    
-    // Force UI updates
-    updateUIDirectly();
-    
-    // CRITICAL: Save state immediately after player switch
-    if (typeof window.saveGameState === 'function') {
-        console.log("SWITCH: Immediate save after player switch");
-        window.saveGameState();
+    try {
+        console.log("Switching player from", currentPlayer);
         
-        // Additional save after a delay
-        setTimeout(() => {
-            if (typeof window.saveGameState === 'function') {
-                console.log("SWITCH: Delayed save after player switch");
-                window.saveGameState();
-                window.moveInProgress = false;
-            }
-        }, 500);
-    } else {
-        window.moveInProgress = false;
+        // Reset dice
+        dice = [];
+        diceRolled = false;
+        
+        // Switch player
+        currentPlayer = currentPlayer === 'player1' ? 'player2' : 'player1';
+        
+        // Update game status
+        gameStatus = (currentPlayer === 'player1' ? 'Player 1' : 'Player 2') + "'s turn to roll.";
+        
+        console.log("Switched to", currentPlayer);
+        
+        // Update UI
+        if (typeof updatePlayerInfo === 'function') {
+            updatePlayerInfo();
+        }
+        if (typeof updateDiceDisplay === 'function') {
+            updateDiceDisplay();
+        }
+        if (typeof updateGameStatus === 'function') {
+            updateGameStatus();
+        }
+        
+        // Save game state
+        saveGameStateThrottled();
+        
+        return true;
+    } catch (error) {
+        console.error("Error switching player:", error);
+        return false;
     }
 }
 
@@ -651,61 +559,37 @@ function saveGameStateThrottled() {
 
 function calculateValidMoves(pointIndex, dice) {
     try {
+        console.log("Calculating valid moves from point:", pointIndex);
+        
+        // Reset valid moves
         validMoves = [];
         combinedMoves = [];
         
-        if (!dice || dice.length === 0) return;
-        
-        let playerColor = currentPlayer === 'player1' ? 'white' : 'black';
-        let direction = currentPlayer === 'player1' ? 1 : -1;
-        
-        console.log("Calculating valid moves for point", pointIndex, "with dice", dice);
-        
-        // Handle moves from the bar
-        if ((playerColor === 'white' && whiteBar && whiteBar.length > 0) || 
-            (playerColor === 'black' && blackBar && blackBar.length > 0)) {
-            
-            if (pointIndex !== -1) {
-                console.log("Must move from bar first");
-                return;
-            } else {
-                for (let i = 0; i < dice.length; i++) {
-                    let die = dice[i];
-                    let entryPoint;
-                    
-                    if (playerColor === 'white') {
-                        entryPoint = die - 1;
-                    } else {
-                        entryPoint = 24 - die;
-                    }
-                    
-                    if (entryPoint >= 0 && entryPoint < 24) {
-                        if (board[entryPoint].length === 0 || 
-                            board[entryPoint][0].color === playerColor ||
-                            (board[entryPoint].length === 1 && board[entryPoint][0].color !== playerColor)) {
-                            validMoves.push(entryPoint);
-                            console.log("Valid bar entry point:", entryPoint);
-                        }
-                    }
-                }
-            }
+        if (!dice || dice.length === 0) {
+            console.log("No dice available");
             return;
         }
         
+        let playerColor = currentPlayer === 'player1' ? 'white' : 'black';
+        let direction = playerColor === 'white' ? 1 : -1;
+        
         // Check if player can bear off
         let canBearOff = canPlayerBearOff(playerColor);
-        console.log("Can player bear off:", canBearOff);
         
-        // Process each die
+        // Calculate valid moves for each die
         for (let i = 0; i < dice.length; i++) {
             let die = dice[i];
-            let targetIndex = pointIndex + (die * direction);
+            
+            // Skip used dice
+            if (die.used) continue;
+            
+            let targetIndex = pointIndex + (die.value * direction);
             
             // Check for bearing off
             if (canBearOff) {
                 if (playerColor === 'white') {
                     if (pointIndex >= 18) { // Only allow bearing off from home board
-                        if (targetIndex >= 24 || (die > 24 - pointIndex && isValidBearOff(pointIndex, die, playerColor))) {
+                        if (targetIndex >= 24 || (die.value > 24 - pointIndex && isValidBearOff(pointIndex, die.value, playerColor))) {
                             if (!validMoves.includes(24)) {
                                 validMoves.push(24); // Special target index for bearing off
                                 console.log("Valid bearing off move for white");
@@ -715,7 +599,7 @@ function calculateValidMoves(pointIndex, dice) {
                     }
                 } else { // Black player
                     if (pointIndex <= 5) { // Only allow bearing off from home board
-                        if (targetIndex < 0 || (die > pointIndex + 1 && isValidBearOff(pointIndex, die, playerColor))) {
+                        if (targetIndex < 0 || (die.value > pointIndex + 1 && isValidBearOff(pointIndex, die.value, playerColor))) {
                             if (!validMoves.includes(-1)) {
                                 validMoves.push(-1); // Special target index for bearing off
                                 console.log("Valid bearing off move for black");
@@ -741,72 +625,11 @@ function calculateValidMoves(pointIndex, dice) {
             }
         }
         
-        // Calculate combined moves (using multiple dice)
-        if (dice.length >= 2) {
-            // Create an array of unique dice values
-            let uniqueDice = [...new Set(dice)];
-            
-            if (uniqueDice.length >= 2) {
-                // Test all combinations of two different dice
-                for (let d1 = 0; d1 < uniqueDice.length; d1++) {
-                    for (let d2 = 0; d2 < uniqueDice.length; d2++) {
-                        if (d1 === d2) continue; // Skip same die
-                        
-                        let die1 = uniqueDice[d1];
-                        let die2 = uniqueDice[d2];
-                        
-                        // Try die1 then die2
-                        let intermediateIndex = pointIndex + (die1 * direction);
-                        if (intermediateIndex >= 0 && intermediateIndex < 24) {
-                            if (board[intermediateIndex].length === 0 ||
-                                board[intermediateIndex][0].color === playerColor) {
-                                
-                                let finalIndex = intermediateIndex + (die2 * direction);
-                                
-                                // Check if this is a valid move
-                                if (finalIndex >= 0 && finalIndex < 24) {
-                                    if (board[finalIndex].length === 0 ||
-                                        board[finalIndex][0].color === playerColor ||
-                                        (board[finalIndex].length === 1 && board[finalIndex][0].color !== playerColor)) {
-                                        let alreadyAdded = combinedMoves.some(move => move.targetIndex === finalIndex);
-                                        if (!alreadyAdded) {
-                                            combinedMoves.push({
-                                                targetIndex: finalIndex,
-                                                die1: die1,
-                                                die2: die2
-                                            });
-                                            console.log("Valid combined move to point:", finalIndex);
-                                        }
-                                    }
-                                } else if (canBearOff && 
-                                        ((playerColor === 'white' && finalIndex >= 24) || 
-                                        (playerColor === 'black' && finalIndex < 0))) {
-                                    // Valid bearing off with combined dice
-                                    if (isValidBearOff(intermediateIndex, die2, playerColor)) {
-                                        let bearOffTarget = playerColor === 'white' ? 24 : -1;
-                                        let alreadyAdded = combinedMoves.some(move => move.targetIndex === bearOffTarget);
-                                        if (!alreadyAdded) {
-                                            combinedMoves.push({
-                                                targetIndex: bearOffTarget,
-                                                die1: die1,
-                                                die2: die2
-                                            });
-                                            console.log("Valid combined bearing off move");
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        console.log("Valid moves calculated:", { normal: validMoves, combined: combinedMoves });
+        console.log("Valid moves calculated:", validMoves);
+        return validMoves;
     } catch (error) {
-        console.error("Error in calculateValidMoves:", error);
-        validMoves = [];
-        combinedMoves = [];
+        console.error("Error calculating valid moves:", error);
+        return [];
     }
 }
 
@@ -930,7 +753,7 @@ function hasLegalMoves() {
             
             for (let i = 0; i < dice.length; i++) {
                 let die = dice[i];
-                let entryPoint = playerColor === 'white' ? die - 1 : 24 - die;
+                let entryPoint = playerColor === 'white' ? die.value - 1 : 24 - die.value;
                 
                 if (entryPoint >= 0 && entryPoint < 24 && board[entryPoint]) { // Add board[entryPoint] check
                     if (board[entryPoint].length === 0 || 
@@ -995,7 +818,7 @@ function hasLegalMoves() {
                     for (let k = 0; k < dice.length; k++) {
                         let die = dice[k];
                         let direction = playerColor === 'white' ? 1 : -1;
-                        let targetIndex = i + (die * direction);
+                        let targetIndex = i + (die.value * direction);
                         
                         if (targetIndex >= 0 && targetIndex < 24 && board[targetIndex]) { // Add board[targetIndex] check
                             if (board[targetIndex].length === 0 || 
@@ -1065,14 +888,10 @@ function checkWinCondition() {
 // Check if current player can move
 function canPlayerMove() {
     try {
-        console.log("Can player move check:", { playerRole: playerRole, currentPlayer: currentPlayer });
+        console.log("Can player move check:", { currentPlayer: currentPlayer });
         
-        if (typeof playerRole === 'undefined') return false;
-        if (playerRole === "spectator") return false;
-        if (playerRole === "player1" && currentPlayer === "player1") return true;
-        if (playerRole === "player2" && currentPlayer === "player2") return true;
-        
-        return false;
+        // In local mode, always allow the current player to move
+        return true;
     } catch (error) {
         console.error("Error in canPlayerMove:", error);
         return false;
