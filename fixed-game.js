@@ -1,5 +1,5 @@
-// fixed-game.js - Version 10.10.0 (Code last updated: June 19, 2024 @ 19:30)
-// Backgammon implementation with IMPROVED BAR HANDLING
+// fixed-game.js - Version 10.11.0 (Code last updated: June 19, 2024 @ 20:30)
+// Backgammon implementation with BEAR-OFF FIX & END GAME DETECTION
 
 // Game configurations
 const BOARD_WIDTH = 800;
@@ -30,6 +30,9 @@ let forcedMove = false; // For tracking when only one particular move is allowed
 let canvas;
 let isDragging = false; // Track when we're actively dragging
 
+// Add a gameOver flag to the global variables
+let gameOver = false;
+
 // Initialize the game
 function setup() {
     console.log("Setup function called");
@@ -41,6 +44,19 @@ function setup() {
     // Setup event handlers
     document.getElementById('roll-button').addEventListener('click', rollDice);
     document.getElementById('reset-button').addEventListener('click', resetGame);
+    
+    // Add a simulate end game button
+    const simulateButton = document.createElement('button');
+    simulateButton.id = 'simulate-button';
+    simulateButton.textContent = 'Simulate End Game';
+    simulateButton.style.marginLeft = '10px';
+    simulateButton.addEventListener('click', simulateEndGame);
+    
+    // Add the button after the reset button
+    const resetButton = document.getElementById('reset-button');
+    if (resetButton && resetButton.parentNode) {
+        resetButton.parentNode.insertBefore(simulateButton, resetButton.nextSibling);
+    }
     
     loadGameState();
     
@@ -608,6 +624,12 @@ function checkRemainingMoves() {
 
 // Switch to the other player
 function switchPlayer() {
+    // Check if the game is over
+    checkGameEnd();
+    if (gameOver) {
+        return; // Don't switch player if game is over
+    }
+    
     dice = [];
     diceRolled = false;
     selectedChecker = null;
@@ -627,11 +649,11 @@ function switchPlayer() {
 
 // Check if the mouse is over a point - improved hit detection
 function isMouseOverPoint(x, y, pointIndex) {
-    // Handle bear-off areas
-    if (pointIndex === 24) { // White bear-off
+    // Handle bear-off areas - FIXED to match correct sides
+    if (pointIndex === 24) { // Black bear-off (was incorrectly labeled as white)
         return x > BOARD_WIDTH + BEAR_OFF_WIDTH && 
                y >= 0 && y <= BOARD_HEIGHT;
-    } else if (pointIndex === -1) { // Black bear-off
+    } else if (pointIndex === -1) { // White bear-off (was incorrectly labeled as black)
         return x < BEAR_OFF_WIDTH && 
                y >= 0 && y <= BOARD_HEIGHT;
     }
@@ -858,10 +880,30 @@ function drawBearOffAreas() {
     textSize(14);
     textAlign(CENTER);
     
+    // Clearly label the bear-off areas
     text("Black Bear Off", BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4);
     text("White Bear Off", BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4);
     
+    if (currentPlayer === 'player2' && !gameOver) {
+        // Highlight black bear-off when it's black's turn
+        noFill();
+        stroke(255, 150, 0);
+        strokeWeight(2);
+        rect(0, 0, BEAR_OFF_WIDTH, BOARD_HEIGHT);
+        noStroke();
+    }
+    
+    if (currentPlayer === 'player1' && !gameOver) {
+        // Highlight white bear-off when it's white's turn
+        noFill();
+        stroke(255, 150, 0);
+        strokeWeight(2);
+        rect(BOARD_WIDTH + BEAR_OFF_WIDTH, 0, BEAR_OFF_WIDTH, BOARD_HEIGHT);
+        noStroke();
+    }
+    
     // Draw borne-off checkers count
+    fill(245, 245, 220);
     textSize(18);
     
     text(`${blackBearOff.length}/15`, BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4 + 30);
@@ -1010,9 +1052,10 @@ function saveGameState() {
         blackBar,
         whiteBearOff,
         blackBearOff,
-        version: '10.10.0',
+        version: '10.11.0',
         lastUpdateTime,
-        forcedMove
+        forcedMove,
+        gameOver
     };
     
     try {
@@ -1025,57 +1068,49 @@ function saveGameState() {
 function loadGameState() {
     try {
         const savedState = localStorage.getItem('backgammonState');
+        
         if (savedState) {
             const gameState = JSON.parse(savedState);
             
-            // Load saved state
-            board = gameState.board;
-            currentPlayer = gameState.currentPlayer;
-            dice = gameState.dice;
-            diceRolled = gameState.diceRolled;
-            gameStatus = gameState.gameStatus;
-            whiteBar = gameState.whiteBar;
-            blackBar = gameState.blackBar;
-            whiteBearOff = gameState.whiteBearOff;
-            blackBearOff = gameState.blackBearOff;
+            // Load the board state
+            board = gameState.board || [];
+            currentPlayer = gameState.currentPlayer || 'player1';
+            dice = gameState.dice || [];
+            diceRolled = gameState.diceRolled || false;
+            gameStatus = gameState.gameStatus || "Player 1's turn to roll";
+            whiteBar = gameState.whiteBar || [];
+            blackBar = gameState.blackBar || [];
+            whiteBearOff = gameState.whiteBearOff || [];
+            blackBearOff = gameState.blackBearOff || [];
             lastUpdateTime = gameState.lastUpdateTime || new Date().toLocaleString();
-            forcedMove = gameState.forcedMove;
+            forcedMove = gameState.forcedMove || false;
+            gameOver = gameState.gameOver || false;
             
-            // If it's a fresh turn with no dice rolled, auto-roll
-            if (!diceRolled && dice.length === 0) {
-                setTimeout(() => {
-                    rollDice();
-                }, 1000);
+            // If we're loading an older version without gameOver flag,
+            // check if game should be over
+            if (gameState.version !== '10.11.0') {
+                checkGameEnd();
             }
-        } else {
-            // Initialize new game
-            initializeBoard();
             
-            // Auto-roll dice for the first player
-            setTimeout(() => {
-                rollDice();
-            }, 1000);
+            updateUI();
+        } else {
+            // No saved state, initialize a new game
+            initializeBoard();
         }
     } catch (error) {
         console.error('Error loading game state:', error);
         initializeBoard();
-        
-        // Auto-roll dice for the first player
-        setTimeout(() => {
-            rollDice();
-        }, 1000);
     }
+    
+    // Display version banner upon load
+    displayVersionBanner();
 }
 
 function resetGame() {
     localStorage.removeItem('backgammonState');
     initializeBoard();
+    gameOver = false;
     updateUI();
-    
-    // Auto-roll dice for the first player
-    setTimeout(() => {
-        rollDice();
-    }, 1000);
 }
 
 // Update UI elements
@@ -1167,7 +1202,76 @@ function displayVersionBanner() {
         document.body.appendChild(versionBanner);
     }
     
-    versionBanner.innerHTML = `Version 10.10.0<br>Code Updated: June 19, 2024 @ 19:30<br>IMPROVED BAR HANDLING`;
+    versionBanner.innerHTML = `Version 10.11.0<br>Code Updated: June 19, 2024 @ 20:30<br>BEAR-OFF FIX & END GAME`;
+}
+
+// New function to check if the game is over
+function checkGameEnd() {
+    // Check if either player has borne off all 15 checkers
+    if (whiteBearOff.length === 15) {
+        gameStatus = "GAME OVER - White wins!";
+        gameOver = true;
+        updateUI();
+        
+        // Show a victory message
+        setTimeout(() => {
+            alert("Game Over - White (Player 1) wins!");
+        }, 100);
+        return true;
+    }
+    
+    if (blackBearOff.length === 15) {
+        gameStatus = "GAME OVER - Black wins!";
+        gameOver = true;
+        updateUI();
+        
+        // Show a victory message
+        setTimeout(() => {
+            alert("Game Over - Black (Player 2) wins!");
+        }, 100);
+        return true;
+    }
+    
+    return false;
+}
+
+// Add a simulate end game function
+function simulateEndGame() {
+    // Clear current board
+    board = [];
+    for (let i = 0; i < 24; i++) {
+        board.push([]);
+    }
+    
+    // Clear bar and bear-off areas
+    whiteBar = [];
+    blackBar = [];
+    whiteBearOff = [];
+    blackBearOff = [];
+    
+    // Place white checkers in their home board (points 1-6)
+    for (let i = 0; i < 5; i++) board[0].push({ color: 'white' });  // 5 on point 1
+    for (let i = 0; i < 5; i++) board[1].push({ color: 'white' });  // 5 on point 2
+    for (let i = 0; i < 5; i++) board[2].push({ color: 'white' });  // 5 on point 3
+    
+    // Place black checkers in their home board (points 19-24)
+    for (let i = 0; i < 5; i++) board[18].push({ color: 'black' });  // 5 on point 19
+    for (let i = 0; i < 5; i++) board[19].push({ color: 'black' });  // 5 on point 20
+    for (let i = 0; i < 5; i++) board[20].push({ color: 'black' });  // 5 on point 21
+    
+    // Reset game state
+    dice = [];
+    diceRolled = false;
+    selectedChecker = null;
+    validMoves = [];
+    forcedMove = false;
+    currentPlayer = 'player1';  // White goes first
+    gameStatus = "End Game Simulation - Player 1's turn to roll";
+    gameOver = false;
+    
+    // Save and update
+    saveGameState();
+    updateUI();
 }
 
 // Export functions to window object
