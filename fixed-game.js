@@ -1,5 +1,5 @@
-// fixed-game.js - Version 10.4.2 (Code last updated: June 19, 2024 @ 14:35)
-// Simplified local two-player backgammon with improved placement and drag
+// fixed-game.js - Version 10.5.0 (Code last updated: June 19, 2024 @ 15:45)
+// Simplified local two-player backgammon with improved placement and automatic dice rolling
 
 // Game configurations
 const BOARD_WIDTH = 800;
@@ -80,17 +80,18 @@ function initializeBoard() {
         board.push([]);
     }
     
-    // White checkers - standard backgammon setup
-    for (let i = 0; i < 2; i++) board[0].push({ color: 'white' });
-    for (let i = 0; i < 5; i++) board[11].push({ color: 'white' });
-    for (let i = 0; i < 3; i++) board[16].push({ color: 'white' });
-    for (let i = 0; i < 5; i++) board[18].push({ color: 'white' });
+    // Set up standard backgammon layout based on reference image
+    // White checkers (player1)
+    for (let i = 0; i < 2; i++) board[23].push({ color: 'white' }); // 2 checkers at point 24
+    for (let i = 0; i < 5; i++) board[12].push({ color: 'white' }); // 5 checkers at point 13
+    for (let i = 0; i < 3; i++) board[7].push({ color: 'white' });  // 3 checkers at point 8
+    for (let i = 0; i < 5; i++) board[5].push({ color: 'white' });  // 5 checkers at point 6
     
-    // Black checkers - standard backgammon setup
-    for (let i = 0; i < 2; i++) board[23].push({ color: 'black' });
-    for (let i = 0; i < 5; i++) board[12].push({ color: 'black' });
-    for (let i = 0; i < 3; i++) board[7].push({ color: 'black' });
-    for (let i = 0; i < 5; i++) board[5].push({ color: 'black' });
+    // Black checkers (player2)
+    for (let i = 0; i < 2; i++) board[0].push({ color: 'black' });  // 2 checkers at point 1
+    for (let i = 0; i < 5; i++) board[11].push({ color: 'black' }); // 5 checkers at point 12
+    for (let i = 0; i < 3; i++) board[16].push({ color: 'black' }); // 3 checkers at point 17
+    for (let i = 0; i < 5; i++) board[18].push({ color: 'black' }); // 5 checkers at point 19
     
     whiteBar = [];
     blackBar = [];
@@ -365,9 +366,15 @@ function switchPlayer() {
     selectedChecker = null;
     validMoves = [];
     currentPlayer = currentPlayer === 'player1' ? 'player2' : 'player1';
-    gameStatus = `${currentPlayer === 'player1' ? 'Player 1' : 'Player 2'}'s turn to roll`;
-    saveGameState();
+    gameStatus = `${currentPlayer === 'player1' ? 'Player 1' : 'Player 2'}'s turn. Rolling dice...`;
     updateUI();
+    
+    // Automatically roll dice after a short delay
+    setTimeout(() => {
+        rollDice();
+    }, 1200); // Wait 1.2 seconds to give the player time to see whose turn it is
+    
+    saveGameState();
 }
 
 // Check if the mouse is over a point - improved hit detection
@@ -660,24 +667,28 @@ function drawValidMoves() {
     }
 }
 
-// Helper functions for positioning - fixed for better placement
+// Helper functions for positioning - improved to match reference image
 function getPointX(pointIndex) {
     const boardOffset = BEAR_OFF_WIDTH;
     const pointSpacing = BOARD_WIDTH / 12;
     const halfPointSpacing = pointSpacing / 2;
     
+    // Follow standard backgammon board layout (points 1-24)
+    // Points 1-6 are bottom right, 7-12 bottom left
+    // Points 13-18 are top left, 19-24 top right
+    
     if (pointIndex < 6) {
-        // Bottom right 6 points
-        return boardOffset + BOARD_WIDTH - (pointIndex * pointSpacing) - halfPointSpacing;
+        // Bottom right (points 1-6)
+        return boardOffset + BOARD_WIDTH - ((pointIndex + 1) * pointSpacing) + halfPointSpacing;
     } else if (pointIndex < 12) {
-        // Bottom left 6 points
+        // Bottom left (points 7-12)
         return boardOffset + ((11 - pointIndex) * pointSpacing) + halfPointSpacing;
     } else if (pointIndex < 18) {
-        // Top left 6 points
+        // Top left (points 13-18)
         return boardOffset + ((pointIndex - 12) * pointSpacing) + halfPointSpacing;
     } else {
-        // Top right 6 points
-        return boardOffset + BOARD_WIDTH - ((pointIndex - 18) * pointSpacing) - halfPointSpacing;
+        // Top right (points 19-24)
+        return boardOffset + BOARD_WIDTH - ((23 - pointIndex) * pointSpacing) + halfPointSpacing;
     }
 }
 
@@ -713,7 +724,7 @@ function saveGameState() {
         blackBar,
         whiteBearOff,
         blackBearOff,
-        version: '10.4.2',
+        version: '10.5.0',
         lastUpdateTime
     };
     
@@ -741,13 +752,30 @@ function loadGameState() {
             whiteBearOff = gameState.whiteBearOff;
             blackBearOff = gameState.blackBearOff;
             lastUpdateTime = gameState.lastUpdateTime || new Date().toLocaleString();
+            
+            // If it's a fresh turn with no dice rolled, auto-roll
+            if (!diceRolled && dice.length === 0) {
+                setTimeout(() => {
+                    rollDice();
+                }, 1000);
+            }
         } else {
             // Initialize new game
             initializeBoard();
+            
+            // Auto-roll dice for the first player
+            setTimeout(() => {
+                rollDice();
+            }, 1000);
         }
     } catch (error) {
         console.error('Error loading game state:', error);
         initializeBoard();
+        
+        // Auto-roll dice for the first player
+        setTimeout(() => {
+            rollDice();
+        }, 1000);
     }
 }
 
@@ -755,6 +783,11 @@ function resetGame() {
     localStorage.removeItem('backgammonState');
     initializeBoard();
     updateUI();
+    
+    // Auto-roll dice for the first player
+    setTimeout(() => {
+        rollDice();
+    }, 1000);
 }
 
 // Update UI elements
@@ -848,7 +881,7 @@ function displayVersionBanner() {
     }
     
     // Show fixed code update timestamp, not game state timestamp
-    versionBanner.innerHTML = `Version 10.4.2<br>Code Updated: June 19, 2024 @ 14:35`;
+    versionBanner.innerHTML = `Version 10.5.0<br>Code Updated: June 19, 2024 @ 15:45`;
 }
 
 // Export functions to window object
