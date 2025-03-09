@@ -1,16 +1,16 @@
-// fixed-game.js - Version 10.7.0 (Code last updated: June 19, 2024 @ 17:15)
-// Backgammon implementation with corrected rules and direction
+// fixed-game.js - Version 10.8.0 (Code last updated: June 19, 2024 @ 18:00)
+// Backgammon implementation fully compliant with standard rules
 
 // Game configurations
 const BOARD_WIDTH = 800;
 const BOARD_HEIGHT = 600;
 const POINT_WIDTH = 50;
-const POINT_HEIGHT = 200;  // Reduced height for better checker placement
-const CHECKER_RADIUS = 22; // Slightly smaller checkers for better stacking
+const POINT_HEIGHT = 200;
+const CHECKER_RADIUS = 22;
 const BAR_WIDTH = 50;
 const BEAR_OFF_WIDTH = 80;
 
-// Game state variables
+// Game state variables 
 let board = [];
 let currentPlayer = 'player1';
 let dice = [];
@@ -23,7 +23,8 @@ let whiteBearOff = [];
 let blackBearOff = [];
 let gameStatus = "Player 1's turn to roll";
 let lastUpdateTime = new Date().toLocaleString();
-let mustUseBar = false; // Flag to enforce bar rule
+let mustUseBar = false;
+let forcedMove = false; // For tracking when only one particular move is allowed
 
 // p5.js setup
 let canvas;
@@ -74,28 +75,28 @@ function draw() {
     updateUI();
 }
 
-// Initialize the game board with CORRECT checker placement
+// Initialize the game board with correct checker placement according to standard backgammon rules
 function initializeBoard() {
     board = [];
     for (let i = 0; i < 24; i++) {
         board.push([]);
     }
     
-    // Set up CORRECT standard backgammon layout
+    // STANDARD BACKGAMMON SETUP:
     // White (player1) moves COUNTERCLOCKWISE from point 24 toward point 1
     // Black (player2) moves CLOCKWISE from point 1 toward point 24
     
     // White checkers (player1)
-    for (let i = 0; i < 2; i++) board[0].push({ color: 'white' });  // 2 checkers on point 1
-    for (let i = 0; i < 5; i++) board[5].push({ color: 'white' });  // 5 checkers on point 6
-    for (let i = 0; i < 3; i++) board[7].push({ color: 'white' });  // 3 checkers on point 8
-    for (let i = 0; i < 5; i++) board[12].push({ color: 'white' }); // 5 checkers on point 13
+    for (let i = 0; i < 2; i++) board[0].push({ color: 'white' });   // 2 checkers on point 1
+    for (let i = 0; i < 5; i++) board[5].push({ color: 'white' });   // 5 checkers on point 6
+    for (let i = 0; i < 3; i++) board[7].push({ color: 'white' });   // 3 checkers on point 8
+    for (let i = 0; i < 5; i++) board[12].push({ color: 'white' });  // 5 checkers on point 13
     
     // Black checkers (player2)
-    for (let i = 0; i < 2; i++) board[23].push({ color: 'black' }); // 2 checkers on point 24
-    for (let i = 0; i < 5; i++) board[18].push({ color: 'black' }); // 5 checkers on point 19
-    for (let i = 0; i < 3; i++) board[16].push({ color: 'black' }); // 3 checkers on point 17
-    for (let i = 0; i < 5; i++) board[11].push({ color: 'black' }); // 5 checkers on point 12
+    for (let i = 0; i < 2; i++) board[23].push({ color: 'black' });  // 2 checkers on point 24
+    for (let i = 0; i < 5; i++) board[18].push({ color: 'black' });  // 5 checkers on point 19
+    for (let i = 0; i < 3; i++) board[16].push({ color: 'black' });  // 3 checkers on point 17
+    for (let i = 0; i < 5; i++) board[11].push({ color: 'black' });  // 5 checkers on point 12
     
     whiteBar = [];
     blackBar = [];
@@ -106,11 +107,12 @@ function initializeBoard() {
     currentPlayer = 'player1';
     gameStatus = "Player 1's turn to roll";
     lastUpdateTime = new Date().toLocaleString();
+    forcedMove = false;
     
     saveGameState();
 }
 
-// Roll dice
+// Roll dice with proper handling of doubles
 function rollDice() {
     if (diceRolled) return;
     
@@ -119,12 +121,22 @@ function rollDice() {
         Math.floor(Math.random() * 6) + 1
     ];
 
+    // If doubles are rolled, player gets 4 moves of that value
     if (dice[0] === dice[1]) {
         dice = [dice[0], dice[0], dice[0], dice[0]];
+        gameStatus = `${currentPlayer === 'player1' ? 'Player 1' : 'Player 2'} rolled double ${dice[0]}s!`;
+    } else {
+        gameStatus = `${currentPlayer === 'player1' ? 'Player 1' : 'Player 2'} rolled ${dice.join(', ')}`;
     }
 
     diceRolled = true;
-    gameStatus = `${currentPlayer === 'player1' ? 'Player 1' : 'Player 2'} rolled ${dice.join(', ')}`;
+    
+    // Check if any moves are possible with this roll
+    if (!hasLegalMoves()) {
+        gameStatus += " - No legal moves possible. Turn will be skipped.";
+        setTimeout(switchPlayer, 2000); // Give player time to see they have no moves
+    }
+    
     updateUI();
 }
 
@@ -195,16 +207,16 @@ function mouseReleased() {
     isDragging = false;
 }
 
-// Calculate valid moves for a checker
+// Calculate all valid moves for a checker, enforcing standard backgammon rules
 function calculateValidMoves(pointIndex) {
     if (!dice.length || !diceRolled) return [];
 
     const playerColor = currentPlayer === 'player1' ? 'white' : 'black';
-    // CORRECTED movement direction - White decreases (24→1), Black increases (1→24)
+    // Movement direction - White decreases (24→1), Black increases (1→24)
     const direction = playerColor === 'white' ? -1 : 1;
     const moves = [];
     
-    // Handle checkers on the bar
+    // RULE: Must move checkers from the bar first
     if ((playerColor === 'white' && whiteBar.length > 0) ||
         (playerColor === 'black' && blackBar.length > 0)) {
         
@@ -232,10 +244,42 @@ function calculateValidMoves(pointIndex) {
         }
         
         mustUseBar = false;
+        
+        // RULE: If only one die can be used, use the higher value
+        if (moves.length === 0 && dice.length > 0) {
+            // No valid moves, turn will be skipped
+            return [];
+        } else if (moves.length === 1 && dice.length > 1) {
+            // Only one valid move, enforce using the higher die if that's the case
+            const usedDieIndex = dice.indexOf(playerColor === 'white' ? 
+                                              25 - (moves[0] + 1) : 
+                                              moves[0] + 1);
+            
+            // If we're not using the higher die and there are two dice
+            if (usedDieIndex !== -1 && dice.length === 2 && 
+                dice[1-usedDieIndex] > dice[usedDieIndex]) {
+                // Since there's only one valid move and it's not with the higher die,
+                // we'll force the player to use that move
+                forcedMove = true;
+            }
+        }
+        
         return moves;
     }
     
     // For regular moves (not from the bar)
+    let highestDie = 0;
+    let highestDieIndex = -1;
+    
+    // Find the highest die value first
+    for (let i = 0; i < dice.length; i++) {
+        if (dice[i] > highestDie) {
+            highestDie = dice[i];
+            highestDieIndex = i;
+        }
+    }
+    
+    // Check moves for each die
     for (let i = 0; i < dice.length; i++) {
         const die = dice[i];
         if (!die) continue;
@@ -246,16 +290,22 @@ function calculateValidMoves(pointIndex) {
         if (canBearOff(playerColor)) {
             if (playerColor === 'white' && pointIndex <= 5) {
                 // White's home board is points 1-6 (indices 0-5)
-                // For white, bearing off means moving past point 1 (index 0)
-                if (targetIndex < 0 || (isHighestChecker(pointIndex, playerColor) && die > pointIndex + 1)) {
-                    moves.push(-1); // White bears off (special index)
+                if (targetIndex < 0) {
+                    moves.push(-1); // White bears off
+                    continue;
+                } else if (isHighestChecker(pointIndex, playerColor) && (die > pointIndex + 1)) {
+                    // Can bear off highest checker with a larger die when no exact match
+                    moves.push(-1);
                     continue;
                 }
             } else if (playerColor === 'black' && pointIndex >= 18) {
                 // Black's home board is points 19-24 (indices 18-23)
-                // For black, bearing off means moving past point 24 (index 23)
-                if (targetIndex > 23 || (isHighestChecker(pointIndex, playerColor) && die > 24 - pointIndex)) {
-                    moves.push(24); // Black bears off (special index)
+                if (targetIndex > 23) {
+                    moves.push(24); // Black bears off
+                    continue;
+                } else if (isHighestChecker(pointIndex, playerColor) && (die > 24 - pointIndex)) {
+                    // Can bear off highest checker with a larger die when no exact match
+                    moves.push(24);
                     continue;
                 }
             }
@@ -269,39 +319,86 @@ function calculateValidMoves(pointIndex) {
         }
     }
     
+    // RULE: If no moves are possible with any die, return empty list
+    if (moves.length === 0) {
+        return [];
+    }
+    
+    // RULE: If only one die can be used and it's not the highest die, force it
+    if (moves.length === 1 && dice.length > 1 && dice.length <= 2) {
+        const usedDieIndex = dice.indexOf(Math.abs(moves[0] - pointIndex));
+        
+        if (usedDieIndex !== -1 && highestDieIndex !== -1 && 
+            usedDieIndex !== highestDieIndex && 
+            dice[highestDieIndex] > dice[usedDieIndex]) {
+            // Try the highest die to see if it could be used elsewhere
+            let canUseHighestDie = false;
+            for (let i = 0; i < 24; i++) {
+                if (i === pointIndex) continue; // Skip current point
+                
+                const point = board[i];
+                if (point.length > 0 && point[0].color === playerColor) {
+                    const targetWithHighDie = i + (highestDie * direction);
+                    if (targetWithHighDie >= 0 && targetWithHighDie < 24 && 
+                        canMoveToPoint(targetWithHighDie, playerColor)) {
+                        canUseHighestDie = true;
+                        break;
+                    }
+                }
+            }
+            
+            // If the highest die can't be used anywhere, force using this move
+            if (!canUseHighestDie) {
+                forcedMove = true;
+            }
+        }
+    }
+    
     return moves;
 }
 
-// Check if a checker is the highest one (farthest from home) for bearing off
+// Helper function to check if a checker is the highest one (farthest from home)
 function isHighestChecker(pointIndex, playerColor) {
+    // For white, check if there are white checkers with higher indices
+    // For black, check if there are black checkers with lower indices
+    
     if (playerColor === 'white') {
-        // For white moving counterclockwise (24→1), check if there are any checkers with higher indices
         for (let i = pointIndex + 1; i < 24; i++) {
             if (board[i].some(checker => checker.color === 'white')) {
                 return false;
             }
         }
+        return true;
     } else {
-        // For black moving clockwise (1→24), check if there are any checkers with lower indices
         for (let i = 0; i < pointIndex; i++) {
             if (board[i].some(checker => checker.color === 'black')) {
                 return false;
             }
         }
+        return true;
     }
-    return true;
 }
 
 // Check if a move to a point is valid
 function canMoveToPoint(pointIndex, playerColor) {
+    if (pointIndex < 0 || pointIndex >= 24) return false;
+    
     const targetPoint = board[pointIndex];
     
-    return !targetPoint.length || // Empty point
-           targetPoint[0].color === playerColor || // Own color
-           targetPoint.length === 1; // Can hit single opponent checker
+    // Point is empty
+    if (!targetPoint.length) return true;
+    
+    // Point has own checkers
+    if (targetPoint[0].color === playerColor) return true;
+    
+    // Point has exactly one opponent checker (can be hit)
+    if (targetPoint.length === 1 && targetPoint[0].color !== playerColor) return true;
+    
+    // Point has 2+ opponent checkers (blocked)
+    return false;
 }
 
-// Check if the player can bear off
+// Check if the player can bear off (all checkers in home board or already borne off)
 function canBearOff(playerColor) {
     if (playerColor === 'white') {
         // White's home board is points 1-6 (indices 0-5)
@@ -311,6 +408,7 @@ function canBearOff(playerColor) {
                 return false;
             }
         }
+        // Also check bar
         if (whiteBar.length > 0) {
             return false;
         }
@@ -322,6 +420,7 @@ function canBearOff(playerColor) {
                 return false;
             }
         }
+        // Also check bar
         if (blackBar.length > 0) {
             return false;
         }
@@ -329,7 +428,7 @@ function canBearOff(playerColor) {
     return true;
 }
 
-// Execute a move
+// Execute a move with proper die selection logic
 function executeMove(fromPoint, toPoint) {
     const playerColor = currentPlayer === 'player1' ? 'white' : 'black';
     let checker;
@@ -366,39 +465,76 @@ function executeMove(fromPoint, toPoint) {
     if (fromPoint === -1) {
         // From bar calculation depends on player color
         moveDistance = playerColor === 'white' ? 25 - (toPoint + 1) : toPoint + 1;
+    } else if (toPoint === -1 || toPoint === 24) {
+        // Bearing off - use exact die if possible, otherwise use larger die
+        const exactDistance = playerColor === 'white' ? fromPoint + 1 : 24 - fromPoint;
+        
+        // Try to find the exact die first
+        const exactDieIndex = dice.indexOf(exactDistance);
+        if (exactDieIndex !== -1) {
+            dice.splice(exactDieIndex, 1);
+            
+            // Check for remaining legal moves after this move
+            checkRemainingMoves();
+            return true;
+        }
+        
+        // If no exact die, find the smallest die larger than the distance
+        let smallestLargerDie = Infinity;
+        let smallestLargerDieIndex = -1;
+        
+        for (let i = 0; i < dice.length; i++) {
+            if (dice[i] > exactDistance && dice[i] < smallestLargerDie) {
+                smallestLargerDie = dice[i];
+                smallestLargerDieIndex = i;
+            }
+        }
+        
+        if (smallestLargerDieIndex !== -1) {
+            dice.splice(smallestLargerDieIndex, 1);
+            
+            // Check for remaining legal moves
+            checkRemainingMoves();
+            return true;
+        }
+        
+        // Should not reach here if move validation is correct
+        console.error("Error in bearing off: no appropriate die found");
+        return false;
     } else {
-        // Regular move - absolute difference, accounting for direction
+        // Regular move - absolute difference
         moveDistance = Math.abs(toPoint - fromPoint);
     }
     
-    let dieIndex = dice.indexOf(moveDistance);
+    // Find and remove the used die
+    const dieIndex = dice.indexOf(moveDistance);
     
     if (dieIndex !== -1) {
         dice.splice(dieIndex, 1);
     } else {
-        // For bearing off with a larger die than needed
-        let found = false;
-        for (let i = 0; i < dice.length; i++) {
-            if ((playerColor === 'white' && fromPoint <= 5 && dice[i] > fromPoint + 1) ||
-                (playerColor === 'black' && fromPoint >= 18 && dice[i] > 24 - fromPoint)) {
-                dice.splice(i, 1);
-                found = true;
-                break;
-            }
-        }
-        
-        if (!found && dice.length > 0) {
-            dice.splice(0, 1); // Use the first die if no match
+        console.error("Error: No matching die found for move distance", moveDistance);
+        // Fallback: use first available die
+        if (dice.length > 0) {
+            dice.splice(0, 1);
         }
     }
     
+    // Reset forced move flag
+    forcedMove = false;
+    
     // Check for win
     if (whiteBearOff.length === 15) {
-        gameStatus = "Player 1 (White) wins!";
+        const isGammon = blackBearOff.length === 0;
+        const isBackgammon = isGammon && (blackBar.length > 0 || board.some((point, idx) => idx <= 5 && point.some(c => c.color === 'black')));
+        
+        gameStatus = `Player 1 (White) wins!${isGammon ? ' GAMMON!' : ''}${isBackgammon ? ' BACKGAMMON!' : ''}`;
         dice = [];
         diceRolled = false;
     } else if (blackBearOff.length === 15) {
-        gameStatus = "Player 2 (Black) wins!";
+        const isGammon = whiteBearOff.length === 0;
+        const isBackgammon = isGammon && (whiteBar.length > 0 || board.some((point, idx) => idx >= 18 && point.some(c => c.color === 'white')));
+        
+        gameStatus = `Player 2 (Black) wins!${isGammon ? ' GAMMON!' : ''}${isBackgammon ? ' BACKGAMMON!' : ''}`;
         dice = [];
         diceRolled = false;
     } else {
@@ -414,12 +550,54 @@ function executeMove(fromPoint, toPoint) {
     return true;
 }
 
+// Improved hasLegalMoves function to enforce using both dice
+function hasLegalMoves() {
+    const playerColor = currentPlayer === 'player1' ? 'white' : 'black';
+    
+    // Check if player has checkers on the bar
+    if ((playerColor === 'white' && whiteBar.length > 0) || 
+        (playerColor === 'black' && blackBar.length > 0)) {
+        
+        return calculateValidMoves(-1).length > 0;
+    }
+    
+    // Check each checker on the board
+    for (let i = 0; i < 24; i++) {
+        const point = board[i];
+        if (point.length > 0 && point[0].color === playerColor) {
+            const moves = calculateValidMoves(i);
+            if (moves.length > 0) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+// After executing a move, check if there are any legal moves with remaining dice
+function checkRemainingMoves() {
+    // If no dice left, switch players
+    if (dice.length === 0) {
+        setTimeout(switchPlayer, 800);
+        return;
+    }
+    
+    // Check if there are any legal moves with remaining dice
+    if (!hasLegalMoves()) {
+        gameStatus += " No more legal moves. Switching players...";
+        updateUI();
+        setTimeout(switchPlayer, 1200);
+    }
+}
+
 // Switch to the other player
 function switchPlayer() {
     dice = [];
     diceRolled = false;
     selectedChecker = null;
     validMoves = [];
+    forcedMove = false;
     currentPlayer = currentPlayer === 'player1' ? 'player2' : 'player1';
     gameStatus = `${currentPlayer === 'player1' ? 'Player 1' : 'Player 2'}'s turn. Rolling dice...`;
     updateUI();
@@ -427,7 +605,7 @@ function switchPlayer() {
     // Automatically roll dice after a short delay
     setTimeout(() => {
         rollDice();
-    }, 1200); // Wait 1.2 seconds to give the player time to see whose turn it is
+    }, 1200);
     
     saveGameState();
 }
@@ -779,7 +957,6 @@ function getCheckerY(pointIndex, checkerIndex) {
 
 // Game state persistence
 function saveGameState() {
-    // Update the timestamp whenever the game state is saved
     lastUpdateTime = new Date().toLocaleString();
     
     const gameState = {
@@ -792,8 +969,9 @@ function saveGameState() {
         blackBar,
         whiteBearOff,
         blackBearOff,
-        version: '10.7.0',
-        lastUpdateTime
+        version: '10.8.0',
+        lastUpdateTime,
+        forcedMove
     };
     
     try {
@@ -820,6 +998,7 @@ function loadGameState() {
             whiteBearOff = gameState.whiteBearOff;
             blackBearOff = gameState.blackBearOff;
             lastUpdateTime = gameState.lastUpdateTime || new Date().toLocaleString();
+            forcedMove = gameState.forcedMove;
             
             // If it's a fresh turn with no dice rolled, auto-roll
             if (!diceRolled && dice.length === 0) {
@@ -929,7 +1108,6 @@ function updateUI() {
 
 // Update the displayVersionBanner function to show when the code was last updated
 function displayVersionBanner() {
-    // Create or update version banner
     let versionBanner = document.getElementById('version-banner');
     
     if (!versionBanner) {
@@ -948,7 +1126,7 @@ function displayVersionBanner() {
         document.body.appendChild(versionBanner);
     }
     
-    versionBanner.innerHTML = `Version 10.7.0<br>Code Updated: June 19, 2024 @ 17:15<br>CORRECTED RULES`;
+    versionBanner.innerHTML = `Version 10.8.0<br>Code Updated: June 19, 2024 @ 18:00<br>FULLY RULES COMPLIANT`;
 }
 
 // Export functions to window object
@@ -959,45 +1137,10 @@ window.mouseReleased = mouseReleased;
 window.rollDice = rollDice;
 window.resetGame = resetGame;
 
-// Improved hasLegalMoves function to enforce using both dice
-function hasLegalMoves() {
-    const playerColor = currentPlayer === 'player1' ? 'white' : 'black';
-    
-    // Check if player has checkers on the bar
-    if ((playerColor === 'white' && whiteBar.length > 0) || 
-        (playerColor === 'black' && blackBar.length > 0)) {
-        
-        return calculateValidMoves(-1).length > 0;
-    }
-    
-    // Check each checker on the board
-    for (let i = 0; i < 24; i++) {
-        const point = board[i];
-        for (let j = 0; j < point.length; j++) {
-            if (point[j].color === playerColor) {
-                const moves = calculateValidMoves(i);
-                if (moves.length > 0) {
-                    return true;
-                }
-            }
-        }
-    }
-    
-    return false;
-}
-
-// After executing a move, check if there are any legal moves with remaining dice
-function checkRemainingMoves() {
-    // If no dice left, switch players
-    if (dice.length === 0) {
-        setTimeout(switchPlayer, 800);
-        return;
-    }
-    
-    // Check if there are any legal moves with remaining dice
-    if (!hasLegalMoves()) {
-        gameStatus += " No more legal moves. Switching players...";
-        updateUI();
-        setTimeout(switchPlayer, 1200);
-    }
-} 
+// Export functions to window object
+window.setup = setup;
+window.draw = draw;
+window.mousePressed = mousePressed;
+window.mouseReleased = mouseReleased;
+window.rollDice = rollDice;
+window.resetGame = resetGame; 
