@@ -1,5 +1,5 @@
-// fixed-game.js - Version 10.6.0 (Code last updated: June 19, 2024 @ 16:30)
-// Backgammon implementation with standard rules enforcement
+// fixed-game.js - Version 10.7.0 (Code last updated: June 19, 2024 @ 17:15)
+// Backgammon implementation with corrected rules and direction
 
 // Game configurations
 const BOARD_WIDTH = 800;
@@ -74,25 +74,28 @@ function draw() {
     updateUI();
 }
 
-// Initialize the game board with checker positions
+// Initialize the game board with CORRECT checker placement
 function initializeBoard() {
     board = [];
     for (let i = 0; i < 24; i++) {
         board.push([]);
     }
     
-    // Set up standard backgammon layout based on reference image
+    // Set up CORRECT standard backgammon layout
+    // White (player1) moves COUNTERCLOCKWISE from point 24 toward point 1
+    // Black (player2) moves CLOCKWISE from point 1 toward point 24
+    
     // White checkers (player1)
-    for (let i = 0; i < 2; i++) board[23].push({ color: 'white' }); // 2 checkers at point 24
-    for (let i = 0; i < 5; i++) board[12].push({ color: 'white' }); // 5 checkers at point 13
-    for (let i = 0; i < 3; i++) board[7].push({ color: 'white' });  // 3 checkers at point 8
-    for (let i = 0; i < 5; i++) board[5].push({ color: 'white' });  // 5 checkers at point 6
+    for (let i = 0; i < 2; i++) board[0].push({ color: 'white' });  // 2 checkers on point 1
+    for (let i = 0; i < 5; i++) board[5].push({ color: 'white' });  // 5 checkers on point 6
+    for (let i = 0; i < 3; i++) board[7].push({ color: 'white' });  // 3 checkers on point 8
+    for (let i = 0; i < 5; i++) board[12].push({ color: 'white' }); // 5 checkers on point 13
     
     // Black checkers (player2)
-    for (let i = 0; i < 2; i++) board[0].push({ color: 'black' });  // 2 checkers at point 1
-    for (let i = 0; i < 5; i++) board[11].push({ color: 'black' }); // 5 checkers at point 12
-    for (let i = 0; i < 3; i++) board[16].push({ color: 'black' }); // 3 checkers at point 17
-    for (let i = 0; i < 5; i++) board[18].push({ color: 'black' }); // 5 checkers at point 19
+    for (let i = 0; i < 2; i++) board[23].push({ color: 'black' }); // 2 checkers on point 24
+    for (let i = 0; i < 5; i++) board[18].push({ color: 'black' }); // 5 checkers on point 19
+    for (let i = 0; i < 3; i++) board[16].push({ color: 'black' }); // 3 checkers on point 17
+    for (let i = 0; i < 5; i++) board[11].push({ color: 'black' }); // 5 checkers on point 12
     
     whiteBar = [];
     blackBar = [];
@@ -197,39 +200,37 @@ function calculateValidMoves(pointIndex) {
     if (!dice.length || !diceRolled) return [];
 
     const playerColor = currentPlayer === 'player1' ? 'white' : 'black';
-    const direction = playerColor === 'white' ? 1 : -1; // White moves clockwise, Black counterclockwise
+    // CORRECTED movement direction - White decreases (24→1), Black increases (1→24)
+    const direction = playerColor === 'white' ? -1 : 1;
     const moves = [];
     
-    // RULE: Must move checkers from the bar first
+    // Handle checkers on the bar
     if ((playerColor === 'white' && whiteBar.length > 0) ||
         (playerColor === 'black' && blackBar.length > 0)) {
         
-        // If trying to move a checker not on the bar, return empty moves
         if (pointIndex !== -1) {
             mustUseBar = true;
             return [];
         }
         
         // Bar entry points are in opponent's home board
-        // For white: points 1-6 (indices 0-5)
-        // For black: points 19-24 (indices 18-23)
-        const entryPoints = playerColor === 'white' ? [0, 1, 2, 3, 4, 5] : [18, 19, 20, 21, 22, 23];
+        // For white: entry points are 19-24 (index 18-23)
+        // For black: entry points are 1-6 (index 0-5)
+        const entryPoints = playerColor === 'white' ? [18, 19, 20, 21, 22, 23] : [0, 1, 2, 3, 4, 5];
         
-        // Check each die for possible bar entry
         for (let i = 0; i < dice.length; i++) {
             const die = dice[i];
-            if (!die) continue; // Skip used dice
+            if (!die) continue;
             
-            // Calculate the point where checker would enter
-            const entryPointIndex = playerColor === 'white' ? die - 1 : 24 - die;
+            // Calculate entry point when coming from the bar
+            // White enters at 25-die, Black enters at die
+            const entryPointIndex = playerColor === 'white' ? 24 - die : die - 1;
             
-            // Make sure entry point is within range and is open
             if (entryPoints.includes(entryPointIndex) && canMoveToPoint(entryPointIndex, playerColor)) {
                 moves.push(entryPointIndex);
             }
         }
         
-        // Return possible bar entry moves
         mustUseBar = false;
         return moves;
     }
@@ -237,24 +238,24 @@ function calculateValidMoves(pointIndex) {
     // For regular moves (not from the bar)
     for (let i = 0; i < dice.length; i++) {
         const die = dice[i];
-        if (!die) continue; // Skip used dice
+        if (!die) continue;
         
         const targetIndex = pointIndex + (die * direction);
         
-        // RULE: Bearing off - all checkers must be in home board
+        // Bearing off - all checkers must be in home board
         if (canBearOff(playerColor)) {
-            if (playerColor === 'white' && pointIndex >= 18) {
-                // White's home board is points 19-24 (indices 18-23)
-                // Can bear off with exact roll or higher roll if it's the highest checker
-                if (targetIndex >= 24 || (isHighestChecker(pointIndex, playerColor) && die >= 24 - pointIndex)) {
-                    moves.push(24); // White bears off to point 24
+            if (playerColor === 'white' && pointIndex <= 5) {
+                // White's home board is points 1-6 (indices 0-5)
+                // For white, bearing off means moving past point 1 (index 0)
+                if (targetIndex < 0 || (isHighestChecker(pointIndex, playerColor) && die > pointIndex + 1)) {
+                    moves.push(-1); // White bears off (special index)
                     continue;
                 }
-            } else if (playerColor === 'black' && pointIndex <= 5) {
-                // Black's home board is points 1-6 (indices 0-5)
-                // Can bear off with exact roll or higher roll if it's the highest checker
-                if (targetIndex < 0 || (isHighestChecker(pointIndex, playerColor) && die >= pointIndex + 1)) {
-                    moves.push(-1); // Black bears off to point -1
+            } else if (playerColor === 'black' && pointIndex >= 18) {
+                // Black's home board is points 19-24 (indices 18-23)
+                // For black, bearing off means moving past point 24 (index 23)
+                if (targetIndex > 23 || (isHighestChecker(pointIndex, playerColor) && die > 24 - pointIndex)) {
+                    moves.push(24); // Black bears off (special index)
                     continue;
                 }
             }
@@ -274,15 +275,15 @@ function calculateValidMoves(pointIndex) {
 // Check if a checker is the highest one (farthest from home) for bearing off
 function isHighestChecker(pointIndex, playerColor) {
     if (playerColor === 'white') {
-        // For white, check if there are any white checkers with lower indices
-        for (let i = 0; i < pointIndex; i++) {
+        // For white moving counterclockwise (24→1), check if there are any checkers with higher indices
+        for (let i = pointIndex + 1; i < 24; i++) {
             if (board[i].some(checker => checker.color === 'white')) {
                 return false;
             }
         }
     } else {
-        // For black, check if there are any black checkers with higher indices
-        for (let i = pointIndex + 1; i < 24; i++) {
+        // For black moving clockwise (1→24), check if there are any checkers with lower indices
+        for (let i = 0; i < pointIndex; i++) {
             if (board[i].some(checker => checker.color === 'black')) {
                 return false;
             }
@@ -303,24 +304,24 @@ function canMoveToPoint(pointIndex, playerColor) {
 // Check if the player can bear off
 function canBearOff(playerColor) {
     if (playerColor === 'white') {
-        // Check if all white checkers are in the home board (points 18-23)
-        for (let i = 0; i < 18; i++) {
+        // White's home board is points 1-6 (indices 0-5)
+        // Check if all white checkers are in the home board or already borne off
+        for (let i = 6; i < 24; i++) {
             if (board[i].some(checker => checker.color === 'white')) {
                 return false;
             }
         }
-        // Also check bar
         if (whiteBar.length > 0) {
             return false;
         }
     } else {
-        // Check if all black checkers are in the home board (points 0-5)
-        for (let i = 6; i < 24; i++) {
+        // Black's home board is points 19-24 (indices 18-23)
+        // Check if all black checkers are in the home board or already borne off
+        for (let i = 0; i < 18; i++) {
             if (board[i].some(checker => checker.color === 'black')) {
                 return false;
             }
         }
-        // Also check bar
         if (blackBar.length > 0) {
             return false;
         }
@@ -341,8 +342,8 @@ function executeMove(fromPoint, toPoint) {
     }
     
     // Handle bearing off
-    if ((playerColor === 'white' && toPoint === 24) || 
-        (playerColor === 'black' && toPoint === -1)) {
+    if ((playerColor === 'white' && toPoint === -1) || 
+        (playerColor === 'black' && toPoint === 24)) {
         // Bear off the checker
         (playerColor === 'white' ? whiteBearOff : blackBearOff).push(checker);
         gameStatus = `${playerColor === 'white' ? 'White' : 'Black'} checker borne off!`;
@@ -356,33 +357,38 @@ function executeMove(fromPoint, toPoint) {
         
         // Add checker to the target point
         board[toPoint].push(checker);
-        gameStatus = `${playerColor === 'white' ? 'White' : 'Black'} moved from ${fromPoint === -1 ? 'bar' : fromPoint} to ${toPoint}`;
+        gameStatus = `${playerColor === 'white' ? 'White' : 'Black'} moved from ${fromPoint === -1 ? 'bar' : fromPoint+1} to ${toPoint+1}`;
     }
     
-    // Remove used die
-    const moveDistance = Math.abs(toPoint - (fromPoint === -1 ? 
-                                            (playerColor === 'white' ? 0 : 23) : // Bar entry is calculated from 0 or 23
-                                            fromPoint));
+    // Calculate and remove used die
+    let moveDistance;
+    
+    if (fromPoint === -1) {
+        // From bar calculation depends on player color
+        moveDistance = playerColor === 'white' ? 25 - (toPoint + 1) : toPoint + 1;
+    } else {
+        // Regular move - absolute difference, accounting for direction
+        moveDistance = Math.abs(toPoint - fromPoint);
+    }
+    
     let dieIndex = dice.indexOf(moveDistance);
     
     if (dieIndex !== -1) {
         dice.splice(dieIndex, 1);
     } else {
         // For bearing off with a larger die than needed
-        let smallest = Infinity;
-        let smallestIndex = -1;
-        
+        let found = false;
         for (let i = 0; i < dice.length; i++) {
-            if (dice[i] > moveDistance && dice[i] < smallest) {
-                smallest = dice[i];
-                smallestIndex = i;
+            if ((playerColor === 'white' && fromPoint <= 5 && dice[i] > fromPoint + 1) ||
+                (playerColor === 'black' && fromPoint >= 18 && dice[i] > 24 - fromPoint)) {
+                dice.splice(i, 1);
+                found = true;
+                break;
             }
         }
         
-        if (smallestIndex !== -1) {
-            dice.splice(smallestIndex, 1);
-        } else if (dice.length > 0) {
-            dice.splice(0, 1); // Just use the first die if no match
+        if (!found && dice.length > 0) {
+            dice.splice(0, 1); // Use the first die if no match
         }
     }
     
@@ -786,7 +792,7 @@ function saveGameState() {
         blackBar,
         whiteBearOff,
         blackBearOff,
-        version: '10.6.0',
+        version: '10.7.0',
         lastUpdateTime
     };
     
@@ -942,8 +948,7 @@ function displayVersionBanner() {
         document.body.appendChild(versionBanner);
     }
     
-    // Show fixed code update timestamp, not game state timestamp
-    versionBanner.innerHTML = `Version 10.6.0<br>Code Updated: June 19, 2024 @ 16:30`;
+    versionBanner.innerHTML = `Version 10.7.0<br>Code Updated: June 19, 2024 @ 17:15<br>CORRECTED RULES`;
 }
 
 // Export functions to window object
