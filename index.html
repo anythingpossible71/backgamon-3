@@ -3,12 +3,16 @@
 <head>
     <title>Backgammon - Local Game</title>
     <link rel="stylesheet" type="text/css" href="style.css">
+    <!-- Load p5.js for canvas drawing -->
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.4.1/lib/p5.js"></script>
 </head>
 <body>
     <div class="container">
         <h1>Backgammon</h1>
         <div id="game-container">
             <div id="board-container">
+                <!-- Add canvas-container div for p5.js -->
+                <div id="canvas-container"></div>
                 <div id="game-board"></div>
                 <div id="dice-container">
                     <button id="roll-button">Roll Dice</button>
@@ -54,6 +58,11 @@
             // Start the game loop if it exists
             if (typeof startGameLoop === 'function') {
                 startGameLoop();
+            }
+            
+            // Call setup function for p5.js if it's not automatically called
+            if (typeof setup === 'function' && typeof window.p5 !== 'undefined') {
+                setup();
             }
         });
     </script>

@@ -674,3 +674,32 @@ window.debugBoard = debugBoard;
 
 // Log that the board functions have been loaded
 console.log("Game board functions loaded successfully");
+
+// Function to start the game loop
+function startGameLoop() {
+    try {
+        console.log("Starting game loop");
+        
+        // Make sure setup is called if it hasn't been already
+        if (!gameInitialized && typeof setup === 'function') {
+            setup();
+        }
+        
+        // Make sure the board is initialized
+        if (typeof initializeBoard === 'function' && !gameInitialized) {
+            initializeBoard();
+        }
+        
+        // Force an initial draw
+        if (typeof draw === 'function') {
+            draw();
+        }
+        
+        console.log("Game loop started");
+    } catch (error) {
+        console.error("Error starting game loop:", error);
+    }
+}
+
+// Make the function available globally
+window.startGameLoop = startGameLoop;
