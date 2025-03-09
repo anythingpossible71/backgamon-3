@@ -1,12 +1,12 @@
-// fixed-game.js - Version 10.3.0
-// Simplified local two-player backgammon with working placement and drag
+// fixed-game.js - Version 10.4.0 (Last updated: June 19, 2024)
+// Simplified local two-player backgammon with improved placement and drag
 
 // Game configurations
 const BOARD_WIDTH = 800;
 const BOARD_HEIGHT = 600;
 const POINT_WIDTH = 50;
-const POINT_HEIGHT = 240;
-const CHECKER_RADIUS = 25;
+const POINT_HEIGHT = 200;  // Reduced height for better checker placement
+const CHECKER_RADIUS = 22; // Slightly smaller checkers for better stacking
 const BAR_WIDTH = 50;
 const BEAR_OFF_WIDTH = 80;
 
@@ -22,9 +22,11 @@ let blackBar = [];
 let whiteBearOff = [];
 let blackBearOff = [];
 let gameStatus = "Player 1's turn to roll";
+let lastUpdateTime = new Date().toLocaleString();
 
 // p5.js setup
 let canvas;
+let isDragging = false; // Track when we're actively dragging
 
 // Initialize the game
 function setup() {
@@ -33,7 +35,11 @@ function setup() {
     canvas.parent('canvas-container');
     
     initializeBoard();
+    
+    // Setup event handlers
     document.getElementById('roll-button').addEventListener('click', rollDice);
+    document.getElementById('reset-button').addEventListener('click', resetGame);
+    
     loadGameState();
     
     console.log("Backgammon game initialized");
@@ -74,13 +80,13 @@ function initializeBoard() {
         board.push([]);
     }
     
-    // White checkers
+    // White checkers - standard backgammon setup
     for (let i = 0; i < 2; i++) board[0].push({ color: 'white' });
     for (let i = 0; i < 5; i++) board[11].push({ color: 'white' });
     for (let i = 0; i < 3; i++) board[16].push({ color: 'white' });
     for (let i = 0; i < 5; i++) board[18].push({ color: 'white' });
     
-    // Black checkers
+    // Black checkers - standard backgammon setup
     for (let i = 0; i < 2; i++) board[23].push({ color: 'black' });
     for (let i = 0; i < 5; i++) board[12].push({ color: 'black' });
     for (let i = 0; i < 3; i++) board[7].push({ color: 'black' });
@@ -94,6 +100,7 @@ function initializeBoard() {
     diceRolled = false;
     currentPlayer = 'player1';
     gameStatus = "Player 1's turn to roll";
+    lastUpdateTime = new Date().toLocaleString();
     
     saveGameState();
 }
@@ -116,7 +123,7 @@ function rollDice() {
     updateUI();
 }
 
-// Mouse interaction handlers
+// Mouse interaction handlers - improved for reliable dragging
 function mousePressed() {
     if (!diceRolled) return;
     
@@ -131,6 +138,7 @@ function mousePressed() {
         
         if (dist(mouseX, mouseY, barX, barY) < CHECKER_RADIUS * 2) {
             selectedChecker = { pointIndex: -1, checkerIndex: 0 };
+            isDragging = true;
             calculateValidMoves(-1);
             return;
         }
@@ -143,25 +151,26 @@ function mousePressed() {
         const point = board[i];
         if (!point.length) continue;
         
-        const pointX = getPointX(i);
+        // Only check top checker of each point that belongs to current player
+        const topCheckerIndex = point.length - 1;
+        const topChecker = point[topCheckerIndex];
         
-        for (let j = 0; j < point.length; j++) {
-            const checker = point[j];
-            if (checker.color === playerColor) {
-                const checkerY = getCheckerY(i, j);
-                
-                if (dist(mouseX, mouseY, pointX, checkerY) < CHECKER_RADIUS) {
-                    selectedChecker = { pointIndex: i, checkerIndex: j };
-                    calculateValidMoves(i);
-                    return;
-                }
+        if (topChecker.color === playerColor) {
+            const pointX = getPointX(i);
+            const checkerY = getCheckerY(i, topCheckerIndex);
+            
+            if (dist(mouseX, mouseY, pointX, checkerY) < CHECKER_RADIUS) {
+                selectedChecker = { pointIndex: i, checkerIndex: topCheckerIndex };
+                isDragging = true;
+                calculateValidMoves(i);
+                return;
             }
         }
     }
 }
 
 function mouseReleased() {
-    if (!selectedChecker) return;
+    if (!selectedChecker || !isDragging) return;
     
     // Check if mouse is over any valid move position
     for (const targetPoint of validMoves) {
@@ -174,6 +183,7 @@ function mouseReleased() {
     // Reset selection
     selectedChecker = null;
     validMoves = [];
+    isDragging = false;
 }
 
 // Calculate valid moves for a checker
@@ -199,12 +209,12 @@ function calculateValidMoves(pointIndex) {
         // Check if can bear off
         if (canBearOff(playerColor)) {
             if (playerColor === 'white' && pointIndex >= 18) {
-                if (targetIndex >= 24) {
+                if (targetIndex >= 24 || (isHighestChecker(pointIndex, playerColor) && die >= 24 - pointIndex)) {
                     moves.push(24); // White bears off to point 24
                     continue;
                 }
             } else if (playerColor === 'black' && pointIndex <= 5) {
-                if (targetIndex < 0) {
+                if (targetIndex < 0 || (isHighestChecker(pointIndex, playerColor) && die >= pointIndex + 1)) {
                     moves.push(-1); // Black bears off to point -1
                     continue;
                 }
@@ -221,6 +231,26 @@ function calculateValidMoves(pointIndex) {
     
     validMoves = moves;
     return moves;
+}
+
+// Check if a checker is the highest one (farthest from home) for bearing off
+function isHighestChecker(pointIndex, playerColor) {
+    if (playerColor === 'white') {
+        // For white, check if there are any white checkers with lower indices
+        for (let i = 0; i < pointIndex; i++) {
+            if (board[i].some(checker => checker.color === 'white')) {
+                return false;
+            }
+        }
+    } else {
+        // For black, check if there are any black checkers with higher indices
+        for (let i = pointIndex + 1; i < 24; i++) {
+            if (board[i].some(checker => checker.color === 'black')) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 // Check if a move to a point is valid
@@ -288,7 +318,7 @@ function executeMove(fromPoint, toPoint) {
         
         // Add checker to the target point
         board[toPoint].push(checker);
-        gameStatus = `${playerColor === 'white' ? 'White' : 'Black'} moved from ${fromPoint} to ${toPoint}`;
+        gameStatus = `${playerColor === 'white' ? 'White' : 'Black'} moved from ${fromPoint === -1 ? 'bar' : fromPoint} to ${toPoint}`;
     }
     
     // Remove used die
@@ -298,7 +328,7 @@ function executeMove(fromPoint, toPoint) {
     if (dieIndex !== -1) {
         dice.splice(dieIndex, 1);
     } else {
-        // Just use the first die if no match
+        // Just use the first die if no match (for bearing off with larger die)
         if (dice.length > 0) {
             dice.splice(0, 1);
         }
@@ -340,27 +370,63 @@ function switchPlayer() {
     updateUI();
 }
 
-// Check if the mouse is over a point
+// Check if the mouse is over a point - improved hit detection
 function isMouseOverPoint(x, y, pointIndex) {
     // Handle bear-off areas
     if (pointIndex === 24) { // White bear-off
         return x > BOARD_WIDTH + BEAR_OFF_WIDTH && 
-               y < BOARD_HEIGHT;
+               y >= 0 && y <= BOARD_HEIGHT;
     } else if (pointIndex === -1) { // Black bear-off
         return x < BEAR_OFF_WIDTH && 
-               y < BOARD_HEIGHT;
+               y >= 0 && y <= BOARD_HEIGHT;
     }
     
-    // Handle regular points
+    // Handle regular points - improved hit detection
     const pointX = getPointX(pointIndex);
     const pointY = getPointY(pointIndex);
-    const pointTop = pointIndex < 12 ? pointY - POINT_HEIGHT : pointY;
-    const pointBottom = pointIndex < 12 ? pointY : pointY + POINT_HEIGHT;
     
-    return x >= pointX - POINT_WIDTH/2 && 
-           x <= pointX + POINT_WIDTH/2 && 
-           y >= pointTop && 
-           y <= pointBottom;
+    // Create a more generous hit area, especially for triangular points
+    if (pointIndex < 12) {
+        // Bottom row - triangles point up
+        const triangleHeight = POINT_HEIGHT;
+        const triangleBase = POINT_WIDTH;
+        
+        // Check if point is inside triangle
+        const dx = Math.abs(x - pointX);
+        const dy = pointY - y;
+        
+        if (dx < triangleBase/2 && 
+            dy < triangleHeight && 
+            dy > 0 && 
+            dx/triangleBase*2 < dy/triangleHeight) {
+            return true;
+        }
+    } else {
+        // Top row - triangles point down
+        const triangleHeight = POINT_HEIGHT;
+        const triangleBase = POINT_WIDTH;
+        
+        // Check if point is inside triangle
+        const dx = Math.abs(x - pointX);
+        const dy = y - pointY;
+        
+        if (dx < triangleBase/2 && 
+            dy < triangleHeight && 
+            dy > 0 && 
+            dx/triangleBase*2 < dy/triangleHeight) {
+            return true;
+        }
+    }
+    
+    // Add circular hit area for where the checker would be placed
+    const checkerCount = board[pointIndex] ? board[pointIndex].length : 0;
+    const checkerY = getCheckerY(pointIndex, checkerCount);
+    
+    if (dist(x, y, pointX, checkerY) < CHECKER_RADIUS * 1.5) {
+        return true;
+    }
+    
+    return false;
 }
 
 // Drawing functions
@@ -423,8 +489,11 @@ function drawCheckers() {
         let pointX = getPointX(i);
         
         for (let j = 0; j < point.length; j++) {
-            if (selectedChecker && selectedChecker.pointIndex === i && selectedChecker.checkerIndex === j) {
-                continue; // Skip the checker being dragged
+            // Skip the selected checker if it's being dragged
+            if (selectedChecker && 
+                selectedChecker.pointIndex === i && 
+                selectedChecker.checkerIndex === j) {
+                continue;
             }
             
             let checker = point[j];
@@ -461,16 +530,31 @@ function drawChecker(x, y, color) {
 
 function drawBar() {
     let barX = BOARD_WIDTH/2 + BEAR_OFF_WIDTH;
-        
+    
+    // Draw bar background
+    fill(120, 80, 40);
+    rect(barX - BAR_WIDTH/2, 0, BAR_WIDTH, BOARD_HEIGHT);
+    
     // Draw checkers on the bar
     for (let i = 0; i < whiteBar.length; i++) {
-        let barY = BOARD_HEIGHT / 4 - (i * CHECKER_RADIUS * 1.5);
+        let barY = BOARD_HEIGHT / 4 - (i * CHECKER_RADIUS * 1.2);
         drawChecker(barX, barY, 'white');
     }
     
     for (let i = 0; i < blackBar.length; i++) {
-        let barY = BOARD_HEIGHT * 3/4 + (i * CHECKER_RADIUS * 1.5);
+        let barY = BOARD_HEIGHT * 3/4 + (i * CHECKER_RADIUS * 1.2);
         drawChecker(barX, barY, 'black');
+    }
+    
+    // Highlight if there are checkers on the bar and it's that player's turn
+    const playerColor = currentPlayer === 'player1' ? 'white' : 'black';
+    if ((playerColor === 'white' && whiteBar.length > 0) || 
+        (playerColor === 'black' && blackBar.length > 0)) {
+        
+        noFill();
+        stroke(255, 255, 0);
+        strokeWeight(3);
+        rect(barX - BAR_WIDTH/2, 0, BAR_WIDTH, BOARD_HEIGHT);
     }
 }
 
@@ -510,7 +594,7 @@ function drawBearOffAreas() {
 function drawValidMoves() {
     if (!selectedChecker) return;
     
-    // Draw valid move indicators
+    // Draw valid move indicators with improved visibility
     noStroke();
     fill(0, 255, 0, 100); // Semi-transparent green
     
@@ -523,13 +607,13 @@ function drawValidMoves() {
             const y = BOARD_HEIGHT/2;
             
             // Draw a highlight for bear-off
-            fill(0, 255, 0, 100);
+            fill(0, 255, 0, 150); // More visible
             circle(x, y, CHECKER_RADIUS * 3);
             
             // Add a pulsing effect
             const pulse = (Math.sin(millis() * 0.005) + 1) * 10;
             stroke(255, 255, 0);
-            strokeWeight(2);
+            strokeWeight(3); // Thicker stroke
             noFill();
             circle(x, y, CHECKER_RADIUS * 3 + pulse);
             
@@ -542,7 +626,7 @@ function drawValidMoves() {
         
         // Highlight the triangular point
         noStroke();
-        fill(0, 255, 0, 100);
+        fill(0, 255, 0, 120); // More visible
         
         if (pointIndex < 12) {
             // Bottom row
@@ -564,23 +648,36 @@ function drawValidMoves() {
         const checkerCount = board[pointIndex] ? board[pointIndex].length : 0;
         const checkerY = getCheckerY(pointIndex, checkerCount);
         
-        fill(0, 255, 0, 150);
+        fill(0, 255, 0, 170); // More visible
         circle(pointX, checkerY, CHECKER_RADIUS * 2.5);
+        
+        // Add a pulsing outline
+        const pulse = (Math.sin(millis() * 0.005) + 1) * 5;
+        stroke(255, 255, 0);
+        strokeWeight(3); // Thicker stroke
+        noFill();
+        circle(pointX, checkerY, CHECKER_RADIUS * 2.5 + pulse);
     }
 }
 
-// Helper functions for positioning
+// Helper functions for positioning - fixed for better placement
 function getPointX(pointIndex) {
     const boardOffset = BEAR_OFF_WIDTH;
+    const pointSpacing = BOARD_WIDTH / 12;
+    const halfPointSpacing = pointSpacing / 2;
     
     if (pointIndex < 6) {
-        return boardOffset + BOARD_WIDTH - (pointIndex + 1) * POINT_WIDTH + POINT_WIDTH/2;
+        // Bottom right 6 points
+        return boardOffset + BOARD_WIDTH - (pointIndex * pointSpacing) - halfPointSpacing;
     } else if (pointIndex < 12) {
-        return boardOffset + (12 - pointIndex) * POINT_WIDTH - POINT_WIDTH/2;
+        // Bottom left 6 points
+        return boardOffset + ((11 - pointIndex) * pointSpacing) + halfPointSpacing;
     } else if (pointIndex < 18) {
-        return boardOffset + (pointIndex - 12 + 1) * POINT_WIDTH - POINT_WIDTH/2;
+        // Top left 6 points
+        return boardOffset + ((pointIndex - 12) * pointSpacing) + halfPointSpacing;
     } else {
-        return boardOffset + BOARD_WIDTH - (24 - pointIndex) * POINT_WIDTH + POINT_WIDTH/2;
+        // Top right 6 points
+        return boardOffset + BOARD_WIDTH - ((pointIndex - 18) * pointSpacing) - halfPointSpacing;
     }
 }
 
@@ -590,10 +687,14 @@ function getPointY(pointIndex) {
 
 function getCheckerY(pointIndex, checkerIndex) {
     let pointY = getPointY(pointIndex);
+    const spacing = CHECKER_RADIUS * 1.8; // Better spacing between checkers
+    
     if (pointIndex < 12) {
-        return pointY - CHECKER_RADIUS - (checkerIndex * CHECKER_RADIUS * 2);
+        // Bottom board - checkers stack upward
+        return pointY - CHECKER_RADIUS - (checkerIndex * spacing);
     } else {
-        return pointY + CHECKER_RADIUS + (checkerIndex * CHECKER_RADIUS * 2);
+        // Top board - checkers stack downward
+        return pointY + CHECKER_RADIUS + (checkerIndex * spacing);
     }
 }
 
@@ -609,7 +710,8 @@ function saveGameState() {
         blackBar,
         whiteBearOff,
         blackBearOff,
-        version: '10.3.0'
+        version: '10.4.0',
+        lastUpdateTime
     };
     
     try {
@@ -635,6 +737,7 @@ function loadGameState() {
             blackBar = gameState.blackBar;
             whiteBearOff = gameState.whiteBearOff;
             blackBearOff = gameState.blackBearOff;
+            lastUpdateTime = gameState.lastUpdateTime || new Date().toLocaleString();
         } else {
             // Initialize new game
             initializeBoard();
@@ -655,31 +758,62 @@ function resetGame() {
 function updateUI() {
     const diceContainer = document.getElementById('dice-container');
     if (diceContainer) {
-        diceContainer.innerHTML = '';
-        
-        if (diceRolled && dice.length > 0) {
-            dice.forEach(die => {
-                const dieElement = document.createElement('div');
-                dieElement.className = 'die';
-                dieElement.textContent = die;
-                diceContainer.appendChild(dieElement);
-            });
+        // Clear any existing dice
+        const diceDisplay = diceContainer.querySelector('#dice-display');
+        if (diceDisplay) {
+            diceDisplay.innerHTML = '';
+            
+            if (diceRolled && dice.length > 0) {
+                // Create and append dice elements
+                dice.forEach(die => {
+                    const dieElement = document.createElement('span');
+                    dieElement.className = 'die';
+                    dieElement.textContent = die;
+                    diceDisplay.appendChild(dieElement);
+                });
+            } else {
+                // No dice rolled yet
+                const dice1 = document.createElement('span');
+                dice1.id = 'dice1';
+                dice1.textContent = '-';
+                
+                const dice2 = document.createElement('span');
+                dice2.id = 'dice2';
+                dice2.textContent = '-';
+                
+                diceDisplay.appendChild(dice1);
+                diceDisplay.appendChild(dice2);
+            }
         }
     }
     
+    // Update roll button state
     const rollButton = document.getElementById('roll-button');
     if (rollButton) {
         rollButton.disabled = diceRolled;
     }
     
-    const player1Info = document.getElementById('player1-info');
-    const player2Info = document.getElementById('player2-info');
+    // Update active player
+    const player1Card = document.getElementById('player1-card');
+    const player2Card = document.getElementById('player2-card');
     
-    if (player1Info && player2Info) {
-        player1Info.className = currentPlayer === 'player1' ? 'player-info active' : 'player-info';
-        player2Info.className = currentPlayer === 'player2' ? 'player-info active' : 'player-info';
+    if (player1Card && player2Card) {
+        player1Card.className = currentPlayer === 'player1' ? 'player-card active' : 'player-card';
+        player2Card.className = currentPlayer === 'player2' ? 'player-card active' : 'player-card';
     }
     
+    // Update bar and off counts
+    const player1Bar = document.getElementById('player1-bar');
+    const player2Bar = document.getElementById('player2-bar');
+    const player1Off = document.getElementById('player1-off');
+    const player2Off = document.getElementById('player2-off');
+    
+    if (player1Bar) player1Bar.textContent = whiteBar.length;
+    if (player2Bar) player2Bar.textContent = blackBar.length;
+    if (player1Off) player1Off.textContent = whiteBearOff.length;
+    if (player2Off) player2Off.textContent = blackBearOff.length;
+    
+    // Update game status
     const statusElement = document.getElementById('game-status');
     if (statusElement) {
         statusElement.textContent = gameStatus;
@@ -698,11 +832,12 @@ function updateUI() {
         versionBanner.style.color = 'white';
         versionBanner.style.padding = '5px 10px';
         versionBanner.style.borderRadius = '5px';
+        versionBanner.style.fontFamily = 'Arial, sans-serif';
         versionBanner.style.zIndex = '1000';
         document.body.appendChild(versionBanner);
     }
     
-    versionBanner.textContent = 'Version 10.3.0 - Local Mode';
+    versionBanner.textContent = `Version 10.4.0 - Last Updated: ${lastUpdateTime}`;
 }
 
 // Export functions to window object
