@@ -1,5 +1,5 @@
-// fixed-game.js - Version 10.5.0 (Code last updated: June 19, 2024 @ 15:45)
-// Simplified local two-player backgammon with improved placement and automatic dice rolling
+// fixed-game.js - Version 10.6.0 (Code last updated: June 19, 2024 @ 16:30)
+// Backgammon implementation with standard rules enforcement
 
 // Game configurations
 const BOARD_WIDTH = 800;
@@ -23,6 +23,7 @@ let whiteBearOff = [];
 let blackBearOff = [];
 let gameStatus = "Player 1's turn to roll";
 let lastUpdateTime = new Date().toLocaleString();
+let mustUseBar = false; // Flag to enforce bar rule
 
 // p5.js setup
 let canvas;
@@ -130,10 +131,11 @@ function mousePressed() {
     
     const playerColor = currentPlayer === 'player1' ? 'white' : 'black';
     
-    // Check bar first
-    if ((playerColor === 'white' && whiteBar.length > 0) || 
-        (playerColor === 'black' && blackBar.length > 0)) {
-        
+    // RULE: Must move checkers from the bar first
+    const hasBarCheckers = (playerColor === 'white' && whiteBar.length > 0) || 
+                          (playerColor === 'black' && blackBar.length > 0);
+    
+    if (hasBarCheckers) {
         const barX = BOARD_WIDTH/2 + BEAR_OFF_WIDTH;
         const barY = playerColor === 'white' ? BOARD_HEIGHT/4 : BOARD_HEIGHT * 3/4;
         
@@ -144,10 +146,13 @@ function mousePressed() {
             return;
         }
         
-        return; // Must move from bar
+        // If player has checkers on the bar, they must move those first
+        gameStatus = `${playerColor === 'white' ? 'White' : 'Black'} must move from the bar first`;
+        updateUI();
+        return;
     }
     
-    // Check if a checker was clicked
+    // Regular checker selection
     for (let i = 0; i < board.length; i++) {
         const point = board[i];
         if (!point.length) continue;
@@ -163,7 +168,7 @@ function mousePressed() {
             if (dist(mouseX, mouseY, pointX, checkerY) < CHECKER_RADIUS) {
                 selectedChecker = { pointIndex: i, checkerIndex: topCheckerIndex };
                 isDragging = true;
-                calculateValidMoves(i);
+                validMoves = calculateValidMoves(i);
                 return;
             }
         }
@@ -192,29 +197,62 @@ function calculateValidMoves(pointIndex) {
     if (!dice.length || !diceRolled) return [];
 
     const playerColor = currentPlayer === 'player1' ? 'white' : 'black';
-    const direction = playerColor === 'white' ? 1 : -1;
+    const direction = playerColor === 'white' ? 1 : -1; // White moves clockwise, Black counterclockwise
     const moves = [];
     
-    // Must move from bar first
+    // RULE: Must move checkers from the bar first
     if ((playerColor === 'white' && whiteBar.length > 0) ||
         (playerColor === 'black' && blackBar.length > 0)) {
-        if (pointIndex !== -1) return [];
+        
+        // If trying to move a checker not on the bar, return empty moves
+        if (pointIndex !== -1) {
+            mustUseBar = true;
+            return [];
+        }
+        
+        // Bar entry points are in opponent's home board
+        // For white: points 1-6 (indices 0-5)
+        // For black: points 19-24 (indices 18-23)
+        const entryPoints = playerColor === 'white' ? [0, 1, 2, 3, 4, 5] : [18, 19, 20, 21, 22, 23];
+        
+        // Check each die for possible bar entry
+        for (let i = 0; i < dice.length; i++) {
+            const die = dice[i];
+            if (!die) continue; // Skip used dice
+            
+            // Calculate the point where checker would enter
+            const entryPointIndex = playerColor === 'white' ? die - 1 : 24 - die;
+            
+            // Make sure entry point is within range and is open
+            if (entryPoints.includes(entryPointIndex) && canMoveToPoint(entryPointIndex, playerColor)) {
+                moves.push(entryPointIndex);
+            }
+        }
+        
+        // Return possible bar entry moves
+        mustUseBar = false;
+        return moves;
     }
     
-    // For each die, calculate possible moves
+    // For regular moves (not from the bar)
     for (let i = 0; i < dice.length; i++) {
         const die = dice[i];
+        if (!die) continue; // Skip used dice
         
         const targetIndex = pointIndex + (die * direction);
         
-        // Check if can bear off
+        // RULE: Bearing off - all checkers must be in home board
         if (canBearOff(playerColor)) {
             if (playerColor === 'white' && pointIndex >= 18) {
+                // White's home board is points 19-24 (indices 18-23)
+                // Can bear off with exact roll or higher roll if it's the highest checker
                 if (targetIndex >= 24 || (isHighestChecker(pointIndex, playerColor) && die >= 24 - pointIndex)) {
                     moves.push(24); // White bears off to point 24
                     continue;
                 }
             } else if (playerColor === 'black' && pointIndex <= 5) {
+                // Black's home board is points 1-6 (indices 0-5)
+                // Can bear off with exact roll or higher roll if it's the highest checker
                 if (targetIndex < 0 || (isHighestChecker(pointIndex, playerColor) && die >= pointIndex + 1)) {
                     moves.push(-1); // Black bears off to point -1
                     continue;
@@ -230,7 +268,6 @@ function calculateValidMoves(pointIndex) {
         }
     }
     
-    validMoves = moves;
     return moves;
 }
 
@@ -323,15 +360,29 @@ function executeMove(fromPoint, toPoint) {
     }
     
     // Remove used die
-    const moveDistance = Math.abs(toPoint - fromPoint);
-    const dieIndex = dice.indexOf(moveDistance);
+    const moveDistance = Math.abs(toPoint - (fromPoint === -1 ? 
+                                            (playerColor === 'white' ? 0 : 23) : // Bar entry is calculated from 0 or 23
+                                            fromPoint));
+    let dieIndex = dice.indexOf(moveDistance);
     
     if (dieIndex !== -1) {
         dice.splice(dieIndex, 1);
     } else {
-        // Just use the first die if no match (for bearing off with larger die)
-        if (dice.length > 0) {
-            dice.splice(0, 1);
+        // For bearing off with a larger die than needed
+        let smallest = Infinity;
+        let smallestIndex = -1;
+        
+        for (let i = 0; i < dice.length; i++) {
+            if (dice[i] > moveDistance && dice[i] < smallest) {
+                smallest = dice[i];
+                smallestIndex = i;
+            }
+        }
+        
+        if (smallestIndex !== -1) {
+            dice.splice(smallestIndex, 1);
+        } else if (dice.length > 0) {
+            dice.splice(0, 1); // Just use the first die if no match
         }
     }
     
@@ -344,11 +395,9 @@ function executeMove(fromPoint, toPoint) {
         gameStatus = "Player 2 (Black) wins!";
         dice = [];
         diceRolled = false;
-    }
-    
-    // If no more dice, switch player
-    if (dice.length === 0) {
-        setTimeout(switchPlayer, 800);
+    } else {
+        // Check for remaining legal moves
+        checkRemainingMoves();
     }
     
     // Save the game state
@@ -553,15 +602,28 @@ function drawBar() {
         drawChecker(barX, barY, 'black');
     }
     
-    // Highlight if there are checkers on the bar and it's that player's turn
+    // Highlight bar if player must use it
     const playerColor = currentPlayer === 'player1' ? 'white' : 'black';
     if ((playerColor === 'white' && whiteBar.length > 0) || 
         (playerColor === 'black' && blackBar.length > 0)) {
         
+        // More visible highlight when a player must use the bar
         noFill();
-        stroke(255, 255, 0);
-        strokeWeight(3);
+        stroke(255, 50, 50); // Red outline
+        strokeWeight(4);
         rect(barX - BAR_WIDTH/2, 0, BAR_WIDTH, BOARD_HEIGHT);
+        
+        // Add message
+        fill(255, 50, 50);
+        noStroke();
+        textSize(16);
+        textAlign(CENTER);
+        
+        if (playerColor === 'white') {
+            text("MUST MOVE FROM BAR", barX, BOARD_HEIGHT/4 + CHECKER_RADIUS * 3);
+        } else {
+            text("MUST MOVE FROM BAR", barX, BOARD_HEIGHT * 3/4 - CHECKER_RADIUS * 3);
+        }
     }
 }
 
@@ -724,7 +786,7 @@ function saveGameState() {
         blackBar,
         whiteBearOff,
         blackBearOff,
-        version: '10.5.0',
+        version: '10.6.0',
         lastUpdateTime
     };
     
@@ -881,7 +943,7 @@ function displayVersionBanner() {
     }
     
     // Show fixed code update timestamp, not game state timestamp
-    versionBanner.innerHTML = `Version 10.5.0<br>Code Updated: June 19, 2024 @ 15:45`;
+    versionBanner.innerHTML = `Version 10.6.0<br>Code Updated: June 19, 2024 @ 16:30`;
 }
 
 // Export functions to window object
@@ -890,4 +952,47 @@ window.draw = draw;
 window.mousePressed = mousePressed;
 window.mouseReleased = mouseReleased;
 window.rollDice = rollDice;
-window.resetGame = resetGame; 
+window.resetGame = resetGame;
+
+// Improved hasLegalMoves function to enforce using both dice
+function hasLegalMoves() {
+    const playerColor = currentPlayer === 'player1' ? 'white' : 'black';
+    
+    // Check if player has checkers on the bar
+    if ((playerColor === 'white' && whiteBar.length > 0) || 
+        (playerColor === 'black' && blackBar.length > 0)) {
+        
+        return calculateValidMoves(-1).length > 0;
+    }
+    
+    // Check each checker on the board
+    for (let i = 0; i < 24; i++) {
+        const point = board[i];
+        for (let j = 0; j < point.length; j++) {
+            if (point[j].color === playerColor) {
+                const moves = calculateValidMoves(i);
+                if (moves.length > 0) {
+                    return true;
+                }
+            }
+        }
+    }
+    
+    return false;
+}
+
+// After executing a move, check if there are any legal moves with remaining dice
+function checkRemainingMoves() {
+    // If no dice left, switch players
+    if (dice.length === 0) {
+        setTimeout(switchPlayer, 800);
+        return;
+    }
+    
+    // Check if there are any legal moves with remaining dice
+    if (!hasLegalMoves()) {
+        gameStatus += " No more legal moves. Switching players...";
+        updateUI();
+        setTimeout(switchPlayer, 1200);
+    }
+} 
