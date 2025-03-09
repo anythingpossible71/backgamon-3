@@ -43,25 +43,13 @@
         </div>
     </div>
 
-    <script src="firebase-config.js"></script>
-    <script src="game-logic.js"></script>
-    <script src="game-board.js"></script>
-    <script src="ui-controls.js"></script>
+    <!-- IMPORTANT: Only loading fixed-game.js which contains the complete implementation -->
+    <!-- Removed the old script files to avoid version conflicts -->
     <script src="p5.min.js"></script>
     <script src="fixed-game.js"></script>
     <script>
         // Initialize the game when the page loads
         document.addEventListener('DOMContentLoaded', () => {
-            // Initialize the game state
-            if (typeof initializeGameState === 'function') {
-                initializeGameState();
-            }
-            
-            // Start the game loop if it exists
-            if (typeof startGameLoop === 'function') {
-                startGameLoop();
-            }
-            
             // Call setup function for p5.js if it's not automatically called
             if (typeof setup === 'function' && typeof window.p5 !== 'undefined') {
                 setup();
