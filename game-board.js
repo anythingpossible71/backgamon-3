@@ -47,17 +47,23 @@ function initializeBoard() {
             board.push([]);
         }
         
-        // White checkers
+        // White checkers - match the setup in firebase-config.js
         for (let i = 0; i < 2; i++) board[0].push({ color: 'white' });
         for (let i = 0; i < 5; i++) board[11].push({ color: 'white' });
         for (let i = 0; i < 3; i++) board[16].push({ color: 'white' });
         for (let i = 0; i < 5; i++) board[18].push({ color: 'white' });
         
-        // Black checkers
+        // Black checkers - match the setup in firebase-config.js
         for (let i = 0; i < 2; i++) board[23].push({ color: 'black' });
         for (let i = 0; i < 5; i++) board[12].push({ color: 'black' });
         for (let i = 0; i < 3; i++) board[7].push({ color: 'black' });
         for (let i = 0; i < 5; i++) board[5].push({ color: 'black' });
+        
+        // Initialize other game state variables
+        if (typeof whiteBar === 'undefined') whiteBar = [];
+        if (typeof blackBar === 'undefined') blackBar = [];
+        if (typeof whiteBearOff === 'undefined') whiteBearOff = [];
+        if (typeof blackBearOff === 'undefined') blackBearOff = [];
         
         safeDebugLog("Board initialized with starting positions");
     } catch (error) {

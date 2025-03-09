@@ -57,8 +57,8 @@ function updateDiceDisplay() {
     const rollButton = document.getElementById('roll-button');
     
     if (dice && dice.length > 0) {
-        dice1El.textContent = dice[0];
-        dice2El.textContent = dice.length > 1 ? dice[1] : '-';
+        dice1El.textContent = dice[0].value;
+        dice2El.textContent = dice.length > 1 ? dice[1].value : '-';
     } else {
         dice1El.textContent = '-';
         dice2El.textContent = '-';

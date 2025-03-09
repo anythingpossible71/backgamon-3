@@ -18,33 +18,44 @@ function initializeGameState() {
         blackBar: [],
         whiteBearOff: [],
         blackBearOff: [],
-        gameStatus: 'Game started. Player 1 to roll.',
+        gameStatus: 'Game ready to start. Player 1 to roll.',
         version: '10.0.0'
     };
 
     // Set up initial board position
     // White pieces
-    gameState.board[0] = Array(2).fill({ color: 'white' });
-    gameState.board[11] = Array(5).fill({ color: 'white' });
-    gameState.board[16] = Array(3).fill({ color: 'white' });
-    gameState.board[18] = Array(5).fill({ color: 'white' });
+    gameState.board[0] = Array(2).fill().map(() => ({ color: 'white' }));
+    gameState.board[11] = Array(5).fill().map(() => ({ color: 'white' }));
+    gameState.board[16] = Array(3).fill().map(() => ({ color: 'white' }));
+    gameState.board[18] = Array(5).fill().map(() => ({ color: 'white' }));
 
     // Black pieces
-    gameState.board[23] = Array(2).fill({ color: 'black' });
-    gameState.board[12] = Array(5).fill({ color: 'black' });
-    gameState.board[7] = Array(3).fill({ color: 'black' });
-    gameState.board[5] = Array(5).fill({ color: 'black' });
+    gameState.board[23] = Array(2).fill().map(() => ({ color: 'black' }));
+    gameState.board[12] = Array(5).fill().map(() => ({ color: 'black' }));
+    gameState.board[7] = Array(3).fill().map(() => ({ color: 'black' }));
+    gameState.board[5] = Array(5).fill().map(() => ({ color: 'black' }));
 
     // Set global variables from game state
-    board = gameState.board;
-    currentPlayer = gameState.currentPlayer;
-    dice = gameState.dice;
-    diceRolled = gameState.diceRolled;
-    whiteBar = gameState.whiteBar;
-    blackBar = gameState.blackBar;
-    whiteBearOff = gameState.whiteBearOff;
-    blackBearOff = gameState.blackBearOff;
-    gameStatus = gameState.gameStatus;
+    window.board = gameState.board;
+    window.currentPlayer = gameState.currentPlayer;
+    window.dice = gameState.dice;
+    window.diceRolled = gameState.diceRolled;
+    window.whiteBar = gameState.whiteBar;
+    window.blackBar = gameState.blackBar;
+    window.whiteBearOff = gameState.whiteBearOff;
+    window.blackBearOff = gameState.blackBearOff;
+    window.gameStatus = gameState.gameStatus;
+
+    // Update UI
+    if (typeof updatePlayerInfo === 'function') {
+        updatePlayerInfo();
+    }
+    if (typeof updateDiceDisplay === 'function') {
+        updateDiceDisplay();
+    }
+    if (typeof updateGameStatus === 'function') {
+        updateGameStatus();
+    }
 
     return gameState;
 }

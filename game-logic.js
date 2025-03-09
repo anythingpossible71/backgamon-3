@@ -543,6 +543,14 @@ function startReversionCheck() {
 function rollDice() {
     console.log("Rolling dice");
     
+    // Prevent rapid rolling
+    const now = Date.now();
+    if (now - lastRollTime < ROLL_COOLDOWN) {
+        console.log("Roll cooldown in effect");
+        return;
+    }
+    lastRollTime = now;
+    
     if (diceRolled) {
         console.log("Dice already rolled");
         return;
@@ -550,29 +558,31 @@ function rollDice() {
     
     // Generate random dice values
     dice = [
-        Math.floor(Math.random() * 6) + 1,
-        Math.floor(Math.random() * 6) + 1
+        { value: Math.floor(Math.random() * 6) + 1, used: false },
+        { value: Math.floor(Math.random() * 6) + 1, used: false }
     ];
     
     // Check for doubles
-    if (dice[0] === dice[1]) {
+    if (dice[0].value === dice[1].value) {
         console.log("Doubles rolled!");
-        dice = [dice[0], dice[0], dice[0], dice[0]];
+        dice = [
+            { value: dice[0].value, used: false },
+            { value: dice[0].value, used: false },
+            { value: dice[0].value, used: false },
+            { value: dice[0].value, used: false }
+        ];
     }
     
     diceRolled = true;
     
-    // Display a visual indicator for the roll
-    if (typeof window.updateSyncStatus === 'function') {
-        window.updateSyncStatus(`${currentPlayer} rolled ${dice.join(', ')}`, '#ff9500');
-    }
-    
     // Update game status
-    gameStatus = currentPlayer === 'player1' ? 
-        player1Name + " rolled " + dice.join(', ') + "!" :
-        player2Name + " rolled " + dice.join(', ') + "!";
+    const player = currentPlayer === 'player1' ? 'Player 1' : 'Player 2';
+    const diceValues = dice.map(d => d.value).join(', ');
+    gameStatus = `${player} rolled ${diceValues}!`;
     
-    // CRITICAL FIX: IMMEDIATELY update UI
+    console.log("Dice rolled:", dice.map(d => d.value));
+    
+    // Update UI
     if (typeof updateDiceDisplay === 'function') {
         updateDiceDisplay();
     }
@@ -580,73 +590,8 @@ function rollDice() {
         updateGameStatus();
     }
     
-    // Force a board redraw
-    if (typeof redraw === 'function') {
-        redraw();
-    }
-    
-    // CRITICAL FIX: Save FIVE TIMES with increasing delays for maximum reliability
-    // Save 1: Immediate
-    console.log("DICE SYNC 1/5: Immediate save");
-    saveGameState();
-    
-    // Save 2: After 300ms
-    setTimeout(() => {
-        console.log("DICE SYNC 2/5: 300ms save");
-        saveGameState();
-    }, 300);
-    
-    // Save 3: After 800ms
-    setTimeout(() => {
-        console.log("DICE SYNC 3/5: 800ms save");
-        saveGameState();
-        
-        // Update UI again
-        if (typeof updateDiceDisplay === 'function') {
-            updateDiceDisplay();
-        }
-    }, 800);
-    
-    // Save 4: After 1500ms
-    setTimeout(() => {
-        console.log("DICE SYNC 4/5: 1500ms save");
-        saveGameState();
-    }, 1500);
-    
-    // Save 5: After 3000ms
-    setTimeout(() => {
-        console.log("DICE SYNC 5/5: 3000ms save");
-        saveGameState();
-        
-        // Force a redraw again
-        if (typeof redraw === 'function') {
-            redraw();
-        }
-    }, 3000);
-    
-    // Check if player has legal moves
-    if (!hasLegalMoves()) {
-        console.log("No legal moves available, switching player after delay");
-        
-        // Update status about no moves
-        gameStatus = currentPlayer === 'player1' ? 
-            player1Name + " has no legal moves!" :
-            player2Name + " has no legal moves!";
-            
-        if (typeof updateGameStatus === 'function') {
-            updateGameStatus();
-        }
-        
-        // Force another save with status
-        setTimeout(() => {
-            saveGameState();
-        }, 1000);
-        
-        // Switch player after showing "no moves" message
-        setTimeout(() => {
-            switchPlayer();
-        }, 3000);
-    }
+    // Save game state
+    saveGameStateThrottled();
 }
 
 function switchPlayer() {
@@ -1166,11 +1111,11 @@ function updateUIDirectly() {
         
         // Update dice display
         if (dice1El) {
-            dice1El.textContent = dice && dice.length > 0 ? dice[0] : '-';
+            dice1El.textContent = dice && dice.length > 0 ? dice[0].value : '-';
         }
         
         if (dice2El) {
-            dice2El.textContent = dice && dice.length > 1 ? dice[1] : '-';
+            dice2El.textContent = dice && dice.length > 1 ? dice[1].value : '-';
         }
         
         // Update roll button state
