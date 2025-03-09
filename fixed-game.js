@@ -1,5 +1,5 @@
-// fixed-game.js - Version 10.8.0 (Code last updated: June 19, 2024 @ 18:00)
-// Backgammon implementation fully compliant with standard rules
+// fixed-game.js - Version 10.9.0 (Code last updated: June 19, 2024 @ 18:30)
+// Backgammon implementation with CORRECTED CHECKER PLACEMENT
 
 // Game configurations
 const BOARD_WIDTH = 800;
@@ -82,21 +82,21 @@ function initializeBoard() {
         board.push([]);
     }
     
-    // STANDARD BACKGAMMON SETUP:
+    // STANDARD BACKGAMMON SETUP - CORRECTED:
     // White (player1) moves COUNTERCLOCKWISE from point 24 toward point 1
     // Black (player2) moves CLOCKWISE from point 1 toward point 24
     
-    // White checkers (player1)
-    for (let i = 0; i < 2; i++) board[0].push({ color: 'white' });   // 2 checkers on point 1
-    for (let i = 0; i < 5; i++) board[5].push({ color: 'white' });   // 5 checkers on point 6
-    for (let i = 0; i < 3; i++) board[7].push({ color: 'white' });   // 3 checkers on point 8
+    // White checkers (player1) - CORRECTED PLACEMENT
+    for (let i = 0; i < 2; i++) board[23].push({ color: 'white' });  // 2 checkers on point 24
     for (let i = 0; i < 5; i++) board[12].push({ color: 'white' });  // 5 checkers on point 13
+    for (let i = 0; i < 3; i++) board[7].push({ color: 'white' });   // 3 checkers on point 8
+    for (let i = 0; i < 5; i++) board[5].push({ color: 'white' });   // 5 checkers on point 6
     
-    // Black checkers (player2)
-    for (let i = 0; i < 2; i++) board[23].push({ color: 'black' });  // 2 checkers on point 24
-    for (let i = 0; i < 5; i++) board[18].push({ color: 'black' });  // 5 checkers on point 19
-    for (let i = 0; i < 3; i++) board[16].push({ color: 'black' });  // 3 checkers on point 17
+    // Black checkers (player2) - CORRECTED PLACEMENT
+    for (let i = 0; i < 2; i++) board[0].push({ color: 'black' });   // 2 checkers on point 1
     for (let i = 0; i < 5; i++) board[11].push({ color: 'black' });  // 5 checkers on point 12
+    for (let i = 0; i < 3; i++) board[16].push({ color: 'black' });  // 3 checkers on point 17
+    for (let i = 0; i < 5; i++) board[18].push({ color: 'black' });  // 5 checkers on point 19
     
     whiteBar = [];
     blackBar = [];
@@ -969,7 +969,7 @@ function saveGameState() {
         blackBar,
         whiteBearOff,
         blackBearOff,
-        version: '10.8.0',
+        version: '10.9.0',
         lastUpdateTime,
         forcedMove
     };
@@ -1126,16 +1126,8 @@ function displayVersionBanner() {
         document.body.appendChild(versionBanner);
     }
     
-    versionBanner.innerHTML = `Version 10.8.0<br>Code Updated: June 19, 2024 @ 18:00<br>FULLY RULES COMPLIANT`;
+    versionBanner.innerHTML = `Version 10.9.0<br>Code Updated: June 19, 2024 @ 18:30<br>CORRECTED PLACEMENT`;
 }
-
-// Export functions to window object
-window.setup = setup;
-window.draw = draw;
-window.mousePressed = mousePressed;
-window.mouseReleased = mouseReleased;
-window.rollDice = rollDice;
-window.resetGame = resetGame;
 
 // Export functions to window object
 window.setup = setup;
