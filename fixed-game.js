@@ -1,5 +1,5 @@
-// fixed-game.js - Version 10.9.0 (Code last updated: June 19, 2024 @ 18:30)
-// Backgammon implementation with CORRECTED CHECKER PLACEMENT
+// fixed-game.js - Version 10.10.0 (Code last updated: June 19, 2024 @ 19:30)
+// Backgammon implementation with IMPROVED BAR HANDLING
 
 // Game configurations
 const BOARD_WIDTH = 800;
@@ -154,10 +154,12 @@ function mousePressed() {
         const barX = BOARD_WIDTH/2 + BEAR_OFF_WIDTH;
         const barY = playerColor === 'white' ? BOARD_HEIGHT/4 : BOARD_HEIGHT * 3/4;
         
-        if (dist(mouseX, mouseY, barX, barY) < CHECKER_RADIUS * 2) {
+        // Expand the click area for bar checkers to make them easier to select
+        if (dist(mouseX, mouseY, barX, barY) < CHECKER_RADIUS * 2.5) {
             selectedChecker = { pointIndex: -1, checkerIndex: 0 };
             isDragging = true;
-            calculateValidMoves(-1);
+            validMoves = calculateValidMoves(-1); // Immediately calculate valid moves for bar
+            console.log("Selected checker from bar. Valid moves:", validMoves);
             return;
         }
         
@@ -238,12 +240,22 @@ function calculateValidMoves(pointIndex) {
             // White enters at 25-die, Black enters at die
             const entryPointIndex = playerColor === 'white' ? 24 - die : die - 1;
             
+            // Debug info to diagnose bar entry issues
+            console.log(`Checking bar entry for ${playerColor} with die ${die} to point ${entryPointIndex+1}`);
+            console.log(`Can move to point: ${canMoveToPoint(entryPointIndex, playerColor)}`);
+            
             if (entryPoints.includes(entryPointIndex) && canMoveToPoint(entryPointIndex, playerColor)) {
                 moves.push(entryPointIndex);
             }
         }
         
         mustUseBar = false;
+        
+        // If no valid moves from bar, indicate in the UI
+        if (moves.length === 0) {
+            gameStatus = `No valid moves from the bar for ${playerColor === 'white' ? 'White' : 'Black'}`;
+            updateUI();
+        }
         
         // RULE: If only one die can be used, use the higher value
         if (moves.length === 0 && dice.length > 0) {
@@ -384,6 +396,9 @@ function canMoveToPoint(pointIndex, playerColor) {
     if (pointIndex < 0 || pointIndex >= 24) return false;
     
     const targetPoint = board[pointIndex];
+    
+    // Special debug for bar re-entry moves
+    console.log(`Checking point ${pointIndex+1}: Empty=${!targetPoint.length}, Same color=${targetPoint.length > 0 && targetPoint[0].color === playerColor}, Single opponent=${targetPoint.length === 1 && targetPoint[0].color !== playerColor}`);
     
     // Point is empty
     if (!targetPoint.length) return true;
@@ -779,11 +794,37 @@ function drawBar() {
     for (let i = 0; i < whiteBar.length; i++) {
         let barY = BOARD_HEIGHT / 4 - (i * CHECKER_RADIUS * 1.2);
         drawChecker(barX, barY, 'white');
+        
+        // Add a visual indicator for draggable bar checkers
+        if (currentPlayer === 'player1' && i === whiteBar.length - 1) {
+            noFill();
+            stroke(0, 255, 0, 200);
+            strokeWeight(3);
+            circle(barX, barY, CHECKER_RADIUS * 2.5);
+            
+            // Add pulsing effect to highlight draggable checker
+            const pulse = (Math.sin(millis() * 0.005) + 1) * 5;
+            stroke(255, 255, 0);
+            circle(barX, barY, CHECKER_RADIUS * 2.5 + pulse);
+        }
     }
     
     for (let i = 0; i < blackBar.length; i++) {
         let barY = BOARD_HEIGHT * 3/4 + (i * CHECKER_RADIUS * 1.2);
         drawChecker(barX, barY, 'black');
+        
+        // Add a visual indicator for draggable bar checkers
+        if (currentPlayer === 'player2' && i === blackBar.length - 1) {
+            noFill();
+            stroke(0, 255, 0, 200);
+            strokeWeight(3);
+            circle(barX, barY, CHECKER_RADIUS * 2.5);
+            
+            // Add pulsing effect to highlight draggable checker
+            const pulse = (Math.sin(millis() * 0.005) + 1) * 5;
+            stroke(255, 255, 0);
+            circle(barX, barY, CHECKER_RADIUS * 2.5 + pulse);
+        }
     }
     
     // Highlight bar if player must use it
@@ -969,7 +1010,7 @@ function saveGameState() {
         blackBar,
         whiteBearOff,
         blackBearOff,
-        version: '10.9.0',
+        version: '10.10.0',
         lastUpdateTime,
         forcedMove
     };
@@ -1126,7 +1167,7 @@ function displayVersionBanner() {
         document.body.appendChild(versionBanner);
     }
     
-    versionBanner.innerHTML = `Version 10.9.0<br>Code Updated: June 19, 2024 @ 18:30<br>CORRECTED PLACEMENT`;
+    versionBanner.innerHTML = `Version 10.10.0<br>Code Updated: June 19, 2024 @ 19:30<br>IMPROVED BAR HANDLING`;
 }
 
 // Export functions to window object
