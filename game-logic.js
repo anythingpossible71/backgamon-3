@@ -1,5 +1,6 @@
-// game-logic.js (Part 1) - Complete implementation
+// game-logic.js - Version 10.0.0
 // This file handles game mechanics, moves, and rules
+// Local Two-Player Mode
 
 // Variables to prevent rapid actions
 let isRolling = false;
@@ -10,10 +11,12 @@ const ROLL_COOLDOWN = 1000; // 1 second between rolls
 const SAVE_COOLDOWN = 2000; // 2 seconds between saves
 const MOUSE_COOLDOWN = 100; // 100ms between mouse events
 
-// Simplified move tracking
-let moveInProgress = false;
-// Expose moveInProgress to window for Firebase access
-window.moveInProgress = moveInProgress;
+// Add global variables for move locking mechanism
+let isMoveLocked = false;
+let lockedBoardState = null;
+let lockTimeout = null;
+let revertCheckInterval = null;
+const LOCK_DURATION = 10000; // 10 seconds lock after moves
 
 // Mouse interaction functions with throttling
 function mousePressed() {
@@ -346,10 +349,13 @@ function mouseReleased() {
 
 // Game mechanics functions
 function executeMove(fromPoint, toPoint) {
+    console.log("Executing move from", fromPoint, "to", toPoint);
+    
     try {
-        console.log(`%c[MOVE TRACKING] Executing move from ${fromPoint} to ${toPoint}`, 'background: #3498db; color: white; padding: 2px 5px; border-radius: 3px;');
+        // Set move in progress flag
+        window.moveInProgress = true;
         
-        // Store previous state for comparison
+        // Store previous state before any changes
         const previousState = {
             board: JSON.parse(JSON.stringify(board)),
             whiteBar: [...whiteBar],
@@ -357,18 +363,14 @@ function executeMove(fromPoint, toPoint) {
             whiteBearOff: [...whiteBearOff],
             blackBearOff: [...blackBearOff],
             dice: [...dice],
-            currentPlayer
+            diceRolled: diceRolled,
+            currentPlayer: currentPlayer
         };
-        
-        // Set move in progress flag
-        moveInProgress = true;
-        window.moveInProgress = true;
-        
+
         // Make the move
         const checker = removeChecker(fromPoint);
         if (!checker) {
-            console.error("%c[MOVE TRACKING] ERROR: No checker found at point " + fromPoint, 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;');
-            moveInProgress = false;
+            console.error("No checker found at point", fromPoint);
             window.moveInProgress = false;
             return false;
         }
@@ -383,71 +385,99 @@ function executeMove(fromPoint, toPoint) {
             dice.splice(diceIndex, 1);
         }
         
-        // Log the move details with current state
-        console.log(`%c[MOVE TRACKING] Move completed: ${checker.color} checker from ${fromPoint} to ${toPoint}`, 'background: #2ecc71; color: white; padding: 2px 5px; border-radius: 3px;');
-        console.log(`%c[MOVE TRACKING] Remaining dice: ${JSON.stringify(dice)}`, 'background: #2ecc71; color: white; padding: 2px 5px; border-radius: 3px;');
-        console.log(`%c[MOVE TRACKING] Current player: ${currentPlayer}`, 'background: #2ecc71; color: white; padding: 2px 5px; border-radius: 3px;');
-        
-        // Compare with previous state
-        console.log(`%c[MOVE TRACKING] State comparison:`, 'background: #9b59b6; color: white; padding: 2px 5px; border-radius: 3px;');
-        console.log('Previous state:', previousState);
-        console.log('Current state:', {
-            board: JSON.parse(JSON.stringify(board)),
-            whiteBar: [...whiteBar],
-            blackBar: [...blackBar],
-            whiteBearOff: [...whiteBearOff],
-            blackBearOff: [...blackBearOff],
-            dice: [...dice],
-            currentPlayer
+        // Log the move details
+        console.log("Move completed: ", {
+            from: fromPoint,
+            to: toPoint,
+            color: checker.color,
+            remainingDice: [...dice]
         });
+
+        // Force immediate UI updates
+        updateUIDirectly();
         
-        // Save game state immediately after move
-        if (typeof saveGameState === 'function') {
-            console.log("%c[MOVE TRACKING] Saving game state after move", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
-            saveGameState();
+        // CRITICAL: Save state immediately after move
+        if (typeof window.saveGameState === 'function') {
+            console.log("MOVE: Immediate save after move");
+            window.saveGameState();
             
-            // One additional save with delay for reliability
+            // Additional saves with increasing delays
             setTimeout(() => {
-                console.log("%c[MOVE TRACKING] Delayed save after move", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
-                if (typeof saveGameState === 'function') {
-                    saveGameState();
+                if (typeof window.saveGameState === 'function') {
+                    console.log("MOVE: Second save after move");
+                    window.saveGameState();
                 }
-                // Clear move in progress flag after delayed save
-                moveInProgress = false;
-                window.moveInProgress = false;
-                console.log("%c[MOVE TRACKING] Move in progress flag cleared", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
             }, 500);
-        } else {
-            // Clear move in progress flag if no save function
-            moveInProgress = false;
-            window.moveInProgress = false;
-            console.log("%c[MOVE TRACKING] Move in progress flag cleared (no save function)", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
         }
-        
-        // Check if all moves are done
-        if (dice.length === 0) {
-            console.log("%c[MOVE TRACKING] All moves completed for this turn, switching player soon", 'background: #e67e22; color: white; padding: 2px 5px; border-radius: 3px;');
+
+        // If no more moves possible, switch player after a delay
+        if (dice.length === 0 || !hasLegalMoves()) {
             setTimeout(() => {
-                switchPlayer();
+                if (typeof switchPlayer === 'function') {
+                    switchPlayer();
+                }
+                window.moveInProgress = false;
             }, 1000);
-        }
-        
-        // Force UI updates
-        if (typeof updatePlayerInfo === 'function') updatePlayerInfo();
-        if (typeof updateDiceDisplay === 'function') updateDiceDisplay();
-        
-        // Force redraw
-        if (typeof redraw === 'function') {
-            redraw();
+        } else {
+            // Clear move in progress after a short delay
+            setTimeout(() => {
+                window.moveInProgress = false;
+            }, 500);
         }
         
         return true;
     } catch (error) {
-        console.error("%c[MOVE TRACKING] Error executing move:", 'background: #e74c3c; color: white; padding: 2px 5px; border-radius: 3px;', error);
-        moveInProgress = false;
+        console.error("Error executing move:", error);
         window.moveInProgress = false;
         return false;
     }
+}
+
+// Helper function to validate moves
+function isValidMove(fromPoint, toPoint) {
+    // Basic validation
+    if (fromPoint < -1 || fromPoint > 24 || toPoint < -1 || toPoint > 24) {
+        return false;
+    }
+    
+    // Validate direction based on current player
+    const direction = currentPlayer === 'player1' ? 1 : -1;
+    if (toPoint !== -1 && toPoint !== 24) { // Skip direction check for bearing off
+        if (Math.sign(toPoint - fromPoint) !== direction) {
+            return false;
+        }
+    }
+    
+    // Validate distance matches available dice
+    const moveDistance = Math.abs(toPoint - fromPoint);
+    return dice.includes(moveDistance);
+}
+
+// Helper function to validate game state
+function validateGameState() {
+    // Count total checkers
+    let totalCheckers = 0;
+    
+    // Count checkers on board
+    for (let i = 0; i < 24; i++) {
+        if (Array.isArray(board[i])) {
+            totalCheckers += board[i].length;
+        }
+    }
+    
+    // Add checkers from bars and bear off
+    totalCheckers += (whiteBar ? whiteBar.length : 0);
+    totalCheckers += (blackBar ? blackBar.length : 0);
+    totalCheckers += (whiteBearOff ? whiteBearOff.length : 0);
+    totalCheckers += (blackBearOff ? blackBearOff.length : 0);
+    
+    // Validate total checkers
+    if (totalCheckers !== 30) {
+        console.error("Invalid checker count:", totalCheckers);
+        return false;
+    }
+    
+    return true;
 }
 
 // CRITICAL: Function to check for and restore board state if reversion detected
@@ -620,10 +650,9 @@ function rollDice() {
 }
 
 function switchPlayer() {
-    console.log("%c[MOVE TRACKING] Switching player", 'background: #3498db; color: white; padding: 2px 5px; border-radius: 3px;');
+    console.log("Switching player");
     
-    // Set move in progress flag
-    moveInProgress = true;
+    // Set move in progress during player switch
     window.moveInProgress = true;
     
     // Reset dice
@@ -633,40 +662,25 @@ function switchPlayer() {
     // Switch current player
     currentPlayer = currentPlayer === 'player1' ? 'player2' : 'player1';
     
-    // Save game state immediately after player switch
-    if (typeof saveGameState === 'function') {
-        console.log("%c[MOVE TRACKING] Saving game state after player switch", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
-        saveGameState();
+    // Force UI updates
+    updateUIDirectly();
+    
+    // CRITICAL: Save state immediately after player switch
+    if (typeof window.saveGameState === 'function') {
+        console.log("SWITCH: Immediate save after player switch");
+        window.saveGameState();
         
-        // One additional save with delay for reliability
+        // Additional save after a delay
         setTimeout(() => {
-            console.log("%c[MOVE TRACKING] Delayed save after player switch", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
-            if (typeof saveGameState === 'function') {
-                saveGameState();
+            if (typeof window.saveGameState === 'function') {
+                console.log("SWITCH: Delayed save after player switch");
+                window.saveGameState();
+                window.moveInProgress = false;
             }
-            // Clear move in progress flag after delayed save
-            moveInProgress = false;
-            window.moveInProgress = false;
-            console.log("%c[MOVE TRACKING] Move in progress flag cleared after player switch", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
         }, 500);
     } else {
-        // Clear move in progress flag if no save function
-        moveInProgress = false;
         window.moveInProgress = false;
-        console.log("%c[MOVE TRACKING] Move in progress flag cleared (no save function)", 'background: #f39c12; color: white; padding: 2px 5px; border-radius: 3px;');
     }
-    
-    // Update UI
-    if (typeof updatePlayerInfo === 'function') {
-        updatePlayerInfo();
-    }
-    
-    if (typeof updateDiceDisplay === 'function') {
-        updateDiceDisplay();
-    }
-    
-    // Check win condition
-    checkWinCondition();
 }
 
 // Throttled version of saveGameState to prevent rapid Firebase updates
@@ -1247,20 +1261,29 @@ console.log("Game logic loaded successfully");
 
 // Function to display the version name on the screen
 function displayVersionName() {
-    const versionName = "Version 1.0.0"; // Update this as needed
+    const versionName = "Version 10.0.0 - Local Mode";
     const versionElement = document.createElement('div');
     versionElement.id = 'version-name';
     versionElement.style.position = 'absolute';
-    versionElement.style.bottom = '10px';
+    versionElement.style.top = '10px';
     versionElement.style.right = '10px';
-    versionElement.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    versionElement.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
     versionElement.style.color = 'white';
-    versionElement.style.padding = '5px 10px';
+    versionElement.style.padding = '8px 15px';
     versionElement.style.borderRadius = '5px';
+    versionElement.style.fontWeight = 'bold';
     versionElement.style.zIndex = '1000';
     versionElement.textContent = versionName;
+    
+    // Remove any existing version display
+    const existingVersion = document.getElementById('version-name');
+    if (existingVersion) {
+        existingVersion.remove();
+    }
+    
     document.body.appendChild(versionElement);
 }
 
-// Call the function to display the version name
-window.addEventListener('DOMContentLoaded', displayVersionName);
+// Remove the automatic event listener to avoid duplicate version displays
+// The version is already displayed by firebase-config.js's displayVersionBanner function
+// window.addEventListener('DOMContentLoaded', displayVersionName);
