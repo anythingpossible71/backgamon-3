@@ -52,64 +52,91 @@ function copyGameUrl() {
 
 // Update UI displays
 function updateDiceDisplay() {
-    // Update dice UI
     const dice1El = document.getElementById('dice1');
     const dice2El = document.getElementById('dice2');
+    const rollButton = document.getElementById('roll-button');
     
-    if (dice.length >= 1) {
-        dice1El.innerText = dice[0];
+    if (dice && dice.length > 0) {
+        dice1El.textContent = dice[0];
+        dice2El.textContent = dice.length > 1 ? dice[1] : '-';
     } else {
-        dice1El.innerText = '-';
+        dice1El.textContent = '-';
+        dice2El.textContent = '-';
     }
     
-    if (dice.length >= 2) {
-        dice2El.innerText = dice[1];
-    } else {
-        dice2El.innerText = '-';
+    // Enable roll button only when it's a player's turn and they haven't rolled
+    if (rollButton) {
+        rollButton.disabled = diceRolled;
     }
-    
-    // Disable roll button if dice are already rolled
-    document.getElementById('roll-button').disabled = diceRolled || !canPlayerMove();
 }
 
 function updatePlayerInfo() {
-    // Update player name displays
-    if (hostName) {
-        document.getElementById('player1-name').innerText = hostName + " (White)";
-    }
+    const player1Card = document.getElementById('player1-card');
+    const player2Card = document.getElementById('player2-card');
+    const player1Bar = document.getElementById('player1-bar');
+    const player1Off = document.getElementById('player1-off');
+    const player2Bar = document.getElementById('player2-bar');
+    const player2Off = document.getElementById('player2-off');
     
-    if (guestName) {
-        document.getElementById('player2-name').innerText = guestName + " (Black)";
-    }
-    
-    // Update bar and off counts
-    document.getElementById('player1-bar').innerText = whiteBar.length;
-    document.getElementById('player1-off').innerText = whiteBearOff.length;
-    document.getElementById('player2-bar').innerText = blackBar.length;
-    document.getElementById('player2-off').innerText = blackBearOff.length;
-    
-    // Highlight active player
+    // Update active player highlighting
     if (currentPlayer === 'player1') {
-        document.getElementById('player1-card').classList.add('active');
-        document.getElementById('player2-card').classList.remove('active');
+        player1Card.classList.add('active');
+        player2Card.classList.remove('active');
     } else {
-        document.getElementById('player1-card').classList.remove('active');
-        document.getElementById('player2-card').classList.add('active');
+        player1Card.classList.remove('active');
+        player2Card.classList.add('active');
     }
     
-    // Enable/disable roll button based on whose turn it is
-    document.getElementById('roll-button').disabled = diceRolled || !canPlayerMove();
+    // Update stats
+    if (player1Bar) player1Bar.textContent = whiteBar ? whiteBar.length : 0;
+    if (player1Off) player1Off.textContent = whiteBearOff ? whiteBearOff.length : 0;
+    if (player2Bar) player2Bar.textContent = blackBar ? blackBar.length : 0;
+    if (player2Off) player2Off.textContent = blackBearOff ? blackBearOff.length : 0;
 }
 
-function updateGameStatus() {
-    document.getElementById('game-status').innerText = gameStatus;
-    
-    // Special styling for win messages
-    if (gameStatus.includes("wins")) {
-        document.getElementById('game-status').style.color = '#ff6600';
-        document.getElementById('game-status').style.fontWeight = 'bold';
-    } else {
-        document.getElementById('game-status').style.color = '';
-        document.getElementById('game-status').style.fontWeight = '';
+function updateGameStatus(status) {
+    const statusEl = document.getElementById('game-status');
+    if (statusEl) {
+        if (status) {
+            gameStatus = status;
+        }
+        statusEl.textContent = gameStatus;
     }
 }
+
+// Initialize UI controls
+document.addEventListener('DOMContentLoaded', () => {
+    // Set up roll button
+    const rollButton = document.getElementById('roll-button');
+    if (rollButton) {
+        rollButton.addEventListener('click', () => {
+            if (typeof rollDice === 'function') {
+                rollDice();
+            }
+        });
+    }
+    
+    // Set up reset button
+    const resetButton = document.getElementById('reset-button');
+    if (resetButton) {
+        resetButton.addEventListener('click', () => {
+            if (confirm('Are you sure you want to reset the game?')) {
+                if (typeof resetGame === 'function') {
+                    resetGame();
+                    updatePlayerInfo();
+                    updateDiceDisplay();
+                    updateGameStatus('Game reset. Player 1 to roll.');
+                }
+            }
+        });
+    }
+    
+    // Initial UI update
+    updatePlayerInfo();
+    updateDiceDisplay();
+});
+
+// Export functions to window
+window.updatePlayerInfo = updatePlayerInfo;
+window.updateDiceDisplay = updateDiceDisplay;
+window.updateGameStatus = updateGameStatus;

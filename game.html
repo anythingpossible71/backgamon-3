@@ -111,7 +111,16 @@
         .hidden {
             display: none;
         }
-        /* Removing debug-related CSS styles */
+        #debug-info {
+            padding: 10px;
+            margin-top: 10px;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            display: none;
+        }
         /* Version Display Styles */
         #version-banner {
             position: fixed;
@@ -161,8 +170,13 @@
     window.BAR_WIDTH = 50;
     window.BEAR_OFF_WIDTH = 80;
     
-    // Debug logger function (simplified)
+    // Enable debug mode
+    window.debugMode = true;
+    
+    // Debug logger function
     window.debugLog = function(message, data) {
+        if (!window.debugMode) return;
+        
         if (data) {
             console.log("[DEBUG] " + message, data);
         } else {
@@ -181,10 +195,8 @@
 <body>
     <!-- Version Banner - Always Visible -->
     <div id="version-banner">
-        BACKGAMMON VERSION 8.0.0 - AUTO-REFRESH FIX
+        BACKGAMMON VERSION 7.0.0 - EMERGENCY NO-CACHE FIX
     </div>
-    
-    <!-- Removing sync status indicator -->
     
     <!-- Anti-caching script -->
     <script>
@@ -192,7 +204,7 @@
         console.log("CACHE BUSTER: Forcing reload if cached version");
         
         // Store the current version in localStorage
-        const CURRENT_VERSION = "8.0.0";
+        const CURRENT_VERSION = "7.0.0";
         const storedVersion = localStorage.getItem('backgammon_version');
         
         if (storedVersion !== CURRENT_VERSION) {
@@ -268,6 +280,26 @@
             </div>
             
             <div id="game-status">Waiting for players...</div>
+            
+            <!-- MANUAL SYNC BUTTONS (UPDATED) -->
+            <div style="margin-top: 20px; text-align: center; background-color: #03a9f4; padding: 10px; border-radius: 8px;">
+                <h3 style="margin-top: 0; color: white;">POLLING SYNC CONTROLS</h3>
+                <p style="color: white;">The game automatically checks for updates every 2 seconds. Use these buttons to force an immediate update:</p>
+                <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 10px;">
+                    <button id="refresh-button" style="background-color: #0277bd; font-size: 18px; padding: 12px 24px;">
+                        <span style="font-weight: bold;">↻</span> REFRESH GAME STATE
+                    </button>
+                </div>
+                <div style="display: flex; justify-content: center; gap: 10px;">
+                    <button id="sync-send-button" style="background-color: #0277bd;">SAVE MY STATE</button>
+                    <button id="sync-get-button" style="background-color: #0277bd;">FORCE FETCH</button>
+                </div>
+            </div>
+            
+            <div style="margin-top: 10px; text-align: center;">
+                <button id="debug-button" style="background-color: #666;">Debug Info</button>
+                <div id="debug-info"></div>
+            </div>
         </div>
     </div>
 
@@ -640,6 +672,95 @@
             }
         }
         
+        // Debug button handler
+        document.getElementById('debug-button').addEventListener('click', function() {
+            const debugInfo = document.getElementById('debug-info');
+            
+            if (debugInfo.style.display === 'block') {
+                debugInfo.style.display = 'none';
+                this.textContent = 'Debug Info';
+            } else {
+                // Update debug info
+                debugInfo.innerHTML = `
+                    <strong>Game ID:</strong> ${gameId}<br>
+                    <strong>Player Role:</strong> ${playerRole}<br>
+                    <strong>Player 1:</strong> ${player1Name}<br>
+                    <strong>Player 2:</strong> ${player2Name}<br>
+                    <strong>Game Started:</strong> ${gameStarted}<br>
+                    <strong>Current Player:</strong> ${currentPlayer}<br>
+                    <strong>Dice:</strong> ${JSON.stringify(dice)}<br>
+                    <strong>Dice Rolled:</strong> ${diceRolled}<br>
+                    <strong>Can Move:</strong> ${canPlayerMove ? canPlayerMove() : "unknown"}<br>
+                    <strong>Board Length:</strong> ${board ? board.length : "no board"}<br>
+                `;
+                
+                debugInfo.style.display = 'block';
+                this.textContent = 'Hide Debug';
+                
+                // Force the game to start
+                checkAndStartGame();
+                
+                console.log("=== GAME STATE DEBUG ===");
+                console.log("gameId:", gameId);
+                console.log("playerRole:", playerRole);
+                console.log("player1Name:", player1Name);
+                console.log("player2Name:", player2Name);
+                console.log("gameStarted:", gameStarted);
+                console.log("currentPlayer:", currentPlayer);
+                console.log("dice:", dice);
+                console.log("diceRolled:", diceRolled);
+                console.log("board:", board);
+                
+                // Check if board has checkers
+                let hasCheckers = false;
+                if (board && Array.isArray(board)) {
+                    for (let i = 0; i < board.length; i++) {
+                        if (board[i] && board[i].length > 0) {
+                            hasCheckers = true;
+                            break;
+                        }
+                    }
+                }
+                console.log("Board has checkers:", hasCheckers);
+                
+                // If board is empty, force initialization
+                if (!hasCheckers && typeof initializeBoard === 'function') {
+                    console.log("Board is empty, initializing...");
+                    initializeBoard();
+                }
+            }
+        });
+        
+        // Add manual sync button handlers
+        document.getElementById('sync-send-button').addEventListener('click', function() {
+            console.log("MANUAL: Saving current game state");
+            if (typeof saveGameState === 'function') {
+                saveGameState();
+                alert("Your game state has been saved!");
+            }
+        });
+        
+        document.getElementById('sync-get-button').addEventListener('click', function() {
+            console.log("MANUAL: Forcing state fetch");
+            if (typeof loadGameState === 'function') {
+                loadGameState();
+                alert("Latest game state has been fetched!");
+            }
+        });
+        
+        // New refresh button
+        document.getElementById('refresh-button').addEventListener('click', function() {
+            console.log("REFRESH: Manual refresh requested");
+            if (typeof fetchLatestState === 'function') {
+                fetchLatestState();
+                // Don't show alert to avoid excessive popups
+                this.textContent = "✓ REFRESHED";
+                setTimeout(() => {
+                    this.innerHTML = "<span style='font-weight: bold;'>↻</span> REFRESH GAME STATE";
+                }, 1500);
+            }
+        });
+        
         // Initialize on page load
         window.onload = function() {
             debugLog("Window loaded, initializing game...");
@@ -657,6 +778,8 @@
     <script>
     // Board recovery script
     document.addEventListener('DOMContentLoaded', function() {
+        console.log("Board initialization check running");
+        
         // Wait for everything to load
         setTimeout(function() {
             // Define function to check if board has checkers
@@ -693,12 +816,15 @@
                     }
                     
                     boardBackup = clone;
+                    console.log("Board state backed up successfully");
                 }
             }
             
             // Function to restore board from backup
             function restoreBoardFromBackup() {
                 if (boardBackup && Array.isArray(boardBackup)) {
+                    console.log("Restoring board from backup");
+                    
                     // Ensure board exists and is an array
                     if (!window.board || !Array.isArray(window.board)) {
                         window.board = [];
@@ -724,6 +850,8 @@
                         }
                     }
                     
+                    console.log("Board restored from backup");
+                    
                     // Save the restored board to Firebase
                     if (typeof window.saveGameState === 'function') {
                         setTimeout(function() {
@@ -738,15 +866,19 @@
             
             // If board is empty or invalid, try to restore or initialize it
             if (!hasPieces()) {
+                console.log("Board is empty, attempting to restore...");
+                
                 // Try to restore from backup first
                 if (!restoreBoardFromBackup() && typeof window.initializeBoard === 'function') {
                     // If no backup, initialize a new board
+                    console.log("Initializing new board...");
                     window.initializeBoard();
                     
                     // Save to Firebase if we're player 1
                     if (window.playerRole === "player1" && typeof window.saveGameState === 'function') {
                         setTimeout(function() {
                             window.saveGameState();
+                            console.log("Initialized board saved to Firebase");
                         }, 1000);
                     }
                 }
@@ -758,9 +890,12 @@
             // Periodically check the board
             setInterval(function() {
                 if (!hasPieces()) {
+                    console.log("Periodic check found empty board, attempting to restore...");
+                    
                     // Try to restore from backup first
                     if (!restoreBoardFromBackup() && typeof window.initializeBoard === 'function') {
                         // If no backup, initialize a new board
+                        console.log("Initializing new board...");
                         window.initializeBoard();
                     }
                 } else {
@@ -768,6 +903,10 @@
                     backupBoardState();
                 }
             }, 5000); // Check every 5 seconds
+            
+            // CRITICAL: Do not override processFirebaseUpdate as it breaks the client ID system
+            // Instead, just do our backup before updates
+            console.log("Setting up board backup before Firebase updates");
             
             // Create a backup when needed
             if (typeof window.saveGameState === 'function') {
@@ -837,87 +976,6 @@
         
         console.log("Performance improvements loaded");
     });
-    </script>
-
-    <!-- AUTO-REFRESH MECHANISM -->
-    <script>
-        // This script implements automatic refresh functionality
-        document.addEventListener('DOMContentLoaded', function() {
-            // Variables to track last update
-            let lastRefreshTime = 0;
-            let refreshCount = 0;
-            const REFRESH_INTERVAL = 3000; // 3 seconds between auto-refreshes
-            
-            // Function to perform auto-refresh
-            function performAutoRefresh() {
-                try {
-                    const currentTime = Date.now();
-                    if (currentTime - lastRefreshTime < REFRESH_INTERVAL) {
-                        return; // Don't refresh too frequently
-                    }
-                    
-                    refreshCount++;
-                    lastRefreshTime = currentTime;
-                    
-                    // Check if board has checkers
-                    let hasCheckers = false;
-                    if (window.board && Array.isArray(window.board)) {
-                        for (let i = 0; i < window.board.length; i++) {
-                            if (window.board[i] && window.board[i].length > 0) {
-                                hasCheckers = true;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // If board is empty, force initialization
-                    if (!hasCheckers && typeof window.initializeBoard === 'function') {
-                        window.initializeBoard();
-                    }
-                    
-                    // Force the game to start if both players have joined
-                    if (typeof window.checkAndStartGame === 'function') {
-                        window.checkAndStartGame();
-                    }
-                    
-                    // Force UI updates
-                    if (typeof window.updatePlayerInfo === 'function') window.updatePlayerInfo();
-                    if (typeof window.updateDiceDisplay === 'function') window.updateDiceDisplay();
-                    if (typeof window.updateGameStatus === 'function') window.updateGameStatus();
-                    
-                    // Fetch latest state from server
-                    if (typeof window.fetchLatestState === 'function') {
-                        window.fetchLatestState();
-                    }
-                    
-                    // Force a redraw
-                    if (typeof window.redraw === 'function') {
-                        window.redraw();
-                    }
-                    
-                    // Occasionally save state if we're in a game
-                    if (refreshCount % 4 === 0 && window.gameId && typeof window.saveGameState === 'function') {
-                        window.saveGameState();
-                    }
-                } catch (error) {
-                    console.error("Error during refresh:", error);
-                }
-            }
-            
-            // Run initial refresh after a delay to let everything initialize
-            setTimeout(function() {
-                performAutoRefresh();
-                
-                // Set up recurring refresh
-                setInterval(performAutoRefresh, REFRESH_INTERVAL);
-            }, 5000);
-            
-            // Also run refresh when window regains focus (user returns to tab)
-            window.addEventListener('focus', performAutoRefresh);
-            
-            // Export function for manual use
-            window.manualRefresh = performAutoRefresh;
-        });
     </script>
 </body>
 </html>

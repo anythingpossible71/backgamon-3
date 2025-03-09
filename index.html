@@ -1,285 +1,61 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Backgammon - Create New Game</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 40px;
-            width: 90%;
-            max-width: 500px;
-            text-align: center;
-        }
-        h1 {
-            color: #333;
-            margin-top: 0;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: bold;
-            text-align: left;
-        }
-        input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 16px;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 4px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        #game-url-container {
-            margin-top: 30px;
-            display: none;
-        }
-        #game-url {
-            padding: 12px;
-            background-color: #f9f9f9;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            word-break: break-all;
-            margin-bottom: 15px;
-        }
-        .url-buttons {
-            display: flex;
-            justify-content: space-between;
-        }
-        #copy-button {
-            background-color: #2196F3;
-        }
-        #copy-button:hover {
-            background-color: #0b7dda;
-        }
-        #play-button {
-            background-color: #ff9800;
-        }
-        #play-button:hover {
-            background-color: #e68a00;
-        }
-    </style>
-    
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <title>Backgammon - Local Game</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h1>Create a New Backgammon Game</h1>
-        <div class="form-group">
-            <label for="player-name">Your Name:</label>
-            <input type="text" id="player-name" placeholder="Enter your name">
-        </div>
-        <button id="create-game-button">Create New Game</button>
-        
-        <div id="game-url-container">
-            <p>Share this link with your opponent:</p>
-            <div id="game-url"></div>
-            <div class="url-buttons">
-                <button id="copy-button">Copy Link</button>
-                <button id="play-button">Play Now</button>
+        <h1>Backgammon</h1>
+        <div id="game-container">
+            <div id="board-container">
+                <div id="game-board"></div>
+                <div id="dice-container">
+                    <button id="roll-button">Roll Dice</button>
+                    <div id="dice-display">
+                        <span id="dice1">-</span>
+                        <span id="dice2">-</span>
+                    </div>
+                </div>
+                <div id="game-status">Game ready to start. Player 1 to roll.</div>
             </div>
+            <div id="player-info">
+                <div id="player1-card" class="player-card active">
+                    <h3>Player 1 (White)</h3>
+                    <div class="player-stats">
+                        <div>Bar: <span id="player1-bar">0</span></div>
+                        <div>Off: <span id="player1-off">0</span></div>
+                    </div>
+                </div>
+                <div id="player2-card" class="player-card">
+                    <h3>Player 2 (Black)</h3>
+                    <div class="player-stats">
+                        <div>Bar: <span id="player2-bar">0</span></div>
+                        <div>Off: <span id="player2-off">0</span></div>
+                    </div>
+                </div>
+            </div>
+            <button id="reset-button">Reset Game</button>
         </div>
     </div>
 
+    <script src="firebase-config.js"></script>
+    <script src="game-logic.js"></script>
+    <script src="game-board.js"></script>
+    <script src="ui-controls.js"></script>
     <script>
-        // Enable debug mode
-        var debugMode = true;
-        
-        // Debug logger function
-        function debugLog(message, data) {
-            if (!debugMode) return;
-            
-            if (data) {
-                console.log("[DEBUG] " + message, data);
-            } else {
-                console.log("[DEBUG] " + message);
-            }
-        }
-        
-        // Wait for Firebase to load
-        document.addEventListener('DOMContentLoaded', function() {
-            debugLog("DOM fully loaded");
-            
-            // Set up event listeners
-            const createGameButton = document.getElementById('create-game-button');
-            const copyButton = document.getElementById('copy-button');
-            const playButton = document.getElementById('play-button');
-            
-            if (createGameButton) {
-                createGameButton.addEventListener('click', createNewGame);
-                debugLog("Create game button listener added");
+        // Initialize the game when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize the game state
+            if (typeof initializeGameState === 'function') {
+                initializeGameState();
             }
             
-            if (copyButton) {
-                copyButton.addEventListener('click', copyGameLink);
-                debugLog("Copy button listener added");
+            // Start the game loop if it exists
+            if (typeof startGameLoop === 'function') {
+                startGameLoop();
             }
-            
-            if (playButton) {
-                playButton.addEventListener('click', goToGame);
-                debugLog("Play button listener added");
-            }
-            
-            // Initialize Firebase
-            fetch('firebase-config.js')
-                .then(response => response.text())
-                .then(text => {
-                    // Extract Firebase config and initialization
-                    eval(text); // This will execute the Firebase config script
-                    debugLog("Firebase config loaded");
-                })
-                .catch(error => {
-                    console.error("Error loading Firebase config:", error);
-                });
         });
-        
-        // Create a new game
-        function createNewGame() {
-            const playerName = document.getElementById('player-name').value.trim();
-            if (!playerName) {
-                alert('Please enter your name');
-                return;
-            }
-            
-            debugLog("Creating game for player:", playerName);
-            
-            // Generate a unique game ID
-            let gameId;
-            
-            // Use generateUniqueId from firebase-config.js if available
-            if (typeof generateUniqueId === 'function') {
-                gameId = generateUniqueId();
-            } else {
-                // Fallback if the function isn't available
-                gameId = 'game_' + Math.random().toString(36).substr(2, 9);
-            }
-            
-            debugLog("Generated game ID:", gameId);
-            
-            // Create the game URL
-            const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
-            const gameUrl = `${baseUrl}game.html?gameId=${gameId}&playerNum=1&playerName=${encodeURIComponent(playerName)}`;
-            
-            // Display the URL
-            document.getElementById('game-url').textContent = gameUrl;
-            document.getElementById('game-url-container').style.display = 'block';
-            
-            // Initialize game data in Firebase
-            if (typeof firebase !== 'undefined' && firebase.database) {
-                debugLog("Initializing game in Firebase");
-                
-                try {
-                    // Initialize empty board array
-                    let board = [];
-                    for (let i = 0; i < 24; i++) {
-                        board.push([]);
-                    }
-                    
-                    // White checkers
-                    for (let i = 0; i < 2; i++) board[0].push({ color: 'white' });
-                    for (let i = 0; i < 5; i++) board[11].push({ color: 'white' });
-                    for (let i = 0; i < 3; i++) board[16].push({ color: 'white' });
-                    for (let i = 0; i < 5; i++) board[18].push({ color: 'white' });
-                    
-                    // Black checkers
-                    for (let i = 0; i < 2; i++) board[23].push({ color: 'black' });
-                    for (let i = 0; i < 5; i++) board[12].push({ color: 'black' });
-                    for (let i = 0; i < 3; i++) board[7].push({ color: 'black' });
-                    for (let i = 0; i < 5; i++) board[5].push({ color: 'black' });
-                    
-                    // Create initial game state
-                    const initialState = {
-                        board: board,
-                        whiteBar: [],
-                        blackBar: [],
-                        whiteBearOff: [],
-                        blackBearOff: [],
-                        currentPlayer: 'player1',
-                        dice: [],
-                        diceRolled: false,
-                        gameStatus: "Waiting for player 2 to join...",
-                        player1Name: playerName,
-                        player2Name: "Player 2",
-                        gameStarted: false,
-                        timestamp: firebase.database.ServerValue.TIMESTAMP
-                    };
-                    
-                    // Save to Firebase
-                    firebase.database().ref('games/' + gameId).set(initialState)
-                        .then(() => {
-                            debugLog("Game created successfully in Firebase");
-                        })
-                        .catch((error) => {
-                            console.error("Error creating game:", error);
-                        });
-                } catch (e) {
-                    console.error("Error setting up game:", e);
-                }
-            } else {
-                console.warn("Firebase not initialized, game state won't be saved");
-            }
-        }
-        
-        // Copy game link to clipboard
-        function copyGameLink() {
-            const gameUrl = document.getElementById('game-url').textContent;
-            
-            const tempInput = document.createElement('input');
-            tempInput.value = gameUrl;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            document.execCommand('copy');
-            document.body.removeChild(tempInput);
-            
-            const button = document.getElementById('copy-button');
-            const originalText = button.textContent;
-            button.textContent = 'Copied!';
-            setTimeout(() => {
-                button.textContent = originalText;
-            }, 2000);
-            
-            debugLog("Game link copied to clipboard");
-        }
-        
-        // Go to the game
-        function goToGame() {
-            const gameUrl = document.getElementById('game-url').textContent;
-            if (gameUrl) {
-                debugLog("Navigating to game:", gameUrl);
-                window.location.href = gameUrl;
-            } else {
-                console.error("Game URL not found");
-            }
-        }
     </script>
 </body>
 </html>
