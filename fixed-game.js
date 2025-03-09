@@ -1,4 +1,4 @@
-// fixed-game.js - Version 10.4.1 (Last updated: June 19, 2024)
+// fixed-game.js - Version 10.4.2 (Code last updated: June 19, 2024 @ 14:35)
 // Simplified local two-player backgammon with improved placement and drag
 
 // Game configurations
@@ -713,7 +713,7 @@ function saveGameState() {
         blackBar,
         whiteBearOff,
         blackBearOff,
-        version: '10.4.1',
+        version: '10.4.2',
         lastUpdateTime
     };
     
@@ -826,7 +826,7 @@ function updateUI() {
     displayVersionBanner();
 }
 
-// Update the displayVersionBanner function to show a more detailed timestamp
+// Update the displayVersionBanner function to show when the code was last updated
 function displayVersionBanner() {
     // Create or update version banner
     let versionBanner = document.getElementById('version-banner');
@@ -847,8 +847,8 @@ function displayVersionBanner() {
         document.body.appendChild(versionBanner);
     }
     
-    // Format the timestamp with date and time
-    versionBanner.innerHTML = `Version 10.4.1<br>Last Updated: ${lastUpdateTime}`;
+    // Show fixed code update timestamp, not game state timestamp
+    versionBanner.innerHTML = `Version 10.4.2<br>Code Updated: June 19, 2024 @ 14:35`;
 }
 
 // Export functions to window object
