@@ -1,5 +1,5 @@
-// fixed-game.js - Version 10.11.0 (Code last updated: June 19, 2024 @ 20:30)
-// Backgammon implementation with BEAR-OFF FIX & END GAME DETECTION
+// fixed-game.js - Version 10.12.0 (Code last updated: June 19, 2024 @ 21:30)
+// Backgammon implementation with FIXED BEAR-OFF LOGIC AND LOCATIONS
 
 // Game configurations
 const BOARD_WIDTH = 800;
@@ -318,8 +318,9 @@ function calculateValidMoves(pointIndex) {
         if (canBearOff(playerColor)) {
             if (playerColor === 'white' && pointIndex <= 5) {
                 // White's home board is points 1-6 (indices 0-5)
-                if (targetIndex < 0) {
-                    moves.push(-1); // White bears off
+                // EXACT DICE VALUE for bearing off, or can use larger die for highest checker
+                if (targetIndex < 0 || (die === pointIndex + 1)) {
+                    moves.push(-1); // White bears off to LEFT side
                     continue;
                 } else if (isHighestChecker(pointIndex, playerColor) && (die > pointIndex + 1)) {
                     // Can bear off highest checker with a larger die when no exact match
@@ -328,8 +329,9 @@ function calculateValidMoves(pointIndex) {
                 }
             } else if (playerColor === 'black' && pointIndex >= 18) {
                 // Black's home board is points 19-24 (indices 18-23)
-                if (targetIndex > 23) {
-                    moves.push(24); // Black bears off
+                // EXACT DICE VALUE for bearing off, or can use larger die for highest checker
+                if (targetIndex > 23 || (die === 24 - pointIndex)) {
+                    moves.push(24); // Black bears off to RIGHT side
                     continue;
                 } else if (isHighestChecker(pointIndex, playerColor) && (die > 24 - pointIndex)) {
                     // Can bear off highest checker with a larger die when no exact match
@@ -649,11 +651,11 @@ function switchPlayer() {
 
 // Check if the mouse is over a point - improved hit detection
 function isMouseOverPoint(x, y, pointIndex) {
-    // Handle bear-off areas - FIXED to match correct sides
-    if (pointIndex === 24) { // Black bear-off (was incorrectly labeled as white)
+    // Handle bear-off areas - CORRECTED to match proper sides
+    if (pointIndex === 24) { // Black bear-off - RIGHT side
         return x > BOARD_WIDTH + BEAR_OFF_WIDTH && 
                y >= 0 && y <= BOARD_HEIGHT;
-    } else if (pointIndex === -1) { // White bear-off (was incorrectly labeled as black)
+    } else if (pointIndex === -1) { // White bear-off - LEFT side
         return x < BEAR_OFF_WIDTH && 
                y >= 0 && y <= BOARD_HEIGHT;
     }
@@ -880,21 +882,12 @@ function drawBearOffAreas() {
     textSize(14);
     textAlign(CENTER);
     
-    // Clearly label the bear-off areas
-    text("Black Bear Off", BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4);
-    text("White Bear Off", BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4);
+    // CORRECTED labels for bear-off areas
+    text("White Bear Off", BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4);
+    text("Black Bear Off", BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4);
     
     if (currentPlayer === 'player2' && !gameOver) {
-        // Highlight black bear-off when it's black's turn
-        noFill();
-        stroke(255, 150, 0);
-        strokeWeight(2);
-        rect(0, 0, BEAR_OFF_WIDTH, BOARD_HEIGHT);
-        noStroke();
-    }
-    
-    if (currentPlayer === 'player1' && !gameOver) {
-        // Highlight white bear-off when it's white's turn
+        // Highlight black bear-off when it's black's turn - RIGHT SIDE
         noFill();
         stroke(255, 150, 0);
         strokeWeight(2);
@@ -902,17 +895,27 @@ function drawBearOffAreas() {
         noStroke();
     }
     
+    if (currentPlayer === 'player1' && !gameOver) {
+        // Highlight white bear-off when it's white's turn - LEFT SIDE
+        noFill();
+        stroke(255, 150, 0);
+        strokeWeight(2);
+        rect(0, 0, BEAR_OFF_WIDTH, BOARD_HEIGHT);
+        noStroke();
+    }
+    
     // Draw borne-off checkers count
     fill(245, 245, 220);
     textSize(18);
     
-    text(`${blackBearOff.length}/15`, BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4 + 30);
-    text(`${whiteBearOff.length}/15`, BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4 + 30);
+    // Corrected count placement
+    text(`${whiteBearOff.length}/15`, BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4 + 30);
+    text(`${blackBearOff.length}/15`, BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4 + 30);
     
-    // Draw some visual representation of borne-off checkers
+    // Draw some visual representation of borne-off checkers - CORRECTED sides
     for (let i = 0; i < Math.min(whiteBearOff.length, 5); i++) {
         drawChecker(
-            BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2,
+            BEAR_OFF_WIDTH/2,
             BOARD_HEIGHT/2 - CHECKER_RADIUS * 2 - (i * CHECKER_RADIUS * 0.8),
             'white'
         );
@@ -920,7 +923,7 @@ function drawBearOffAreas() {
     
     for (let i = 0; i < Math.min(blackBearOff.length, 5); i++) {
         drawChecker(
-            BEAR_OFF_WIDTH/2,
+            BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2,
             BOARD_HEIGHT/2 + CHECKER_RADIUS * 2 + (i * CHECKER_RADIUS * 0.8),
             'black'
         );
@@ -1052,7 +1055,7 @@ function saveGameState() {
         blackBar,
         whiteBearOff,
         blackBearOff,
-        version: '10.11.0',
+        version: '10.12.0',
         lastUpdateTime,
         forcedMove,
         gameOver
@@ -1088,7 +1091,7 @@ function loadGameState() {
             
             // If we're loading an older version without gameOver flag,
             // check if game should be over
-            if (gameState.version !== '10.11.0') {
+            if (gameState.version !== '10.12.0') {
                 checkGameEnd();
             }
             
@@ -1202,7 +1205,7 @@ function displayVersionBanner() {
         document.body.appendChild(versionBanner);
     }
     
-    versionBanner.innerHTML = `Version 10.11.0<br>Code Updated: June 19, 2024 @ 20:30<br>BEAR-OFF FIX & END GAME`;
+    versionBanner.innerHTML = `Version 10.12.0<br>Code Updated: June 19, 2024 @ 21:30<br>FIXED BEAR-OFF LOGIC`;
 }
 
 // New function to check if the game is over
