@@ -1,5 +1,5 @@
-// fixed-game.js - Version 10.12.0 (Code last updated: June 19, 2024 @ 21:30)
-// Backgammon implementation with FIXED BEAR-OFF LOGIC AND LOCATIONS
+// fixed-game.js - Version 10.13.0 (Code last updated: June 19, 2024 @ 22:00)
+// Backgammon implementation with STRICT BEARING OFF RULES
 
 // Game configurations
 const BOARD_WIDTH = 800;
@@ -318,23 +318,29 @@ function calculateValidMoves(pointIndex) {
         if (canBearOff(playerColor)) {
             if (playerColor === 'white' && pointIndex <= 5) {
                 // White's home board is points 1-6 (indices 0-5)
-                // EXACT DICE VALUE for bearing off, or can use larger die for highest checker
-                if (targetIndex < 0 || (die === pointIndex + 1)) {
+                // Calculate distance for exact dice match
+                const exactDistanceToHome = pointIndex + 1; // +1 because indices are 0-based
+                
+                if (die === exactDistanceToHome) {
+                    // EXACT match - can bear off
                     moves.push(-1); // White bears off to LEFT side
                     continue;
-                } else if (isHighestChecker(pointIndex, playerColor) && (die > pointIndex + 1)) {
-                    // Can bear off highest checker with a larger die when no exact match
+                } else if (die > exactDistanceToHome && isHighestChecker(pointIndex, playerColor)) {
+                    // ONLY the highest checker can bear off with a larger die
                     moves.push(-1);
                     continue;
                 }
             } else if (playerColor === 'black' && pointIndex >= 18) {
                 // Black's home board is points 19-24 (indices 18-23)
-                // EXACT DICE VALUE for bearing off, or can use larger die for highest checker
-                if (targetIndex > 23 || (die === 24 - pointIndex)) {
+                // Calculate distance for exact dice match
+                const exactDistanceToHome = 24 - pointIndex; // Distance from current point to home
+                
+                if (die === exactDistanceToHome) {
+                    // EXACT match - can bear off
                     moves.push(24); // Black bears off to RIGHT side
                     continue;
-                } else if (isHighestChecker(pointIndex, playerColor) && (die > 24 - pointIndex)) {
-                    // Can bear off highest checker with a larger die when no exact match
+                } else if (die > exactDistanceToHome && isHighestChecker(pointIndex, playerColor)) {
+                    // ONLY the highest checker can bear off with a larger die
                     moves.push(24);
                     continue;
                 }
@@ -1055,7 +1061,7 @@ function saveGameState() {
         blackBar,
         whiteBearOff,
         blackBearOff,
-        version: '10.12.0',
+        version: '10.13.0',
         lastUpdateTime,
         forcedMove,
         gameOver
@@ -1091,7 +1097,7 @@ function loadGameState() {
             
             // If we're loading an older version without gameOver flag,
             // check if game should be over
-            if (gameState.version !== '10.12.0') {
+            if (gameState.version !== '10.13.0') {
                 checkGameEnd();
             }
             
@@ -1205,7 +1211,7 @@ function displayVersionBanner() {
         document.body.appendChild(versionBanner);
     }
     
-    versionBanner.innerHTML = `Version 10.12.0<br>Code Updated: June 19, 2024 @ 21:30<br>FIXED BEAR-OFF LOGIC`;
+    versionBanner.innerHTML = `Version 10.13.0<br>Code Updated: June 19, 2024 @ 22:00<br>STRICT BEARING OFF RULES`;
 }
 
 // New function to check if the game is over
