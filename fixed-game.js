@@ -1,14 +1,66 @@
-// fixed-game.js - Version 10.13.0 (Code last updated: June 19, 2024 @ 22:00)
-// Backgammon implementation with STRICT BEARING OFF RULES
+// fixed-game.js - Version 10.13.1 (Code last updated: June 20, 2024 @ 22:00)
+// Backgammon implementation with SVG SPECIFICATIONS
 
-// Game configurations
-const BOARD_WIDTH = 800;
-const BOARD_HEIGHT = 600;
-const POINT_WIDTH = 50;
-const POINT_HEIGHT = 200;
-const CHECKER_RADIUS = 22;
-const BAR_WIDTH = 50;
-const BEAR_OFF_WIDTH = 80;
+// Game configurations - exact SVG specifications
+const BOARD_WIDTH = 1032;
+const BOARD_HEIGHT = 789;
+const INNER_BOARD_X = 38;
+const INNER_BOARD_Y = 38;
+const INNER_BOARD_WIDTH = 857;
+const INNER_BOARD_HEIGHT = 716;
+const CENTER_BAR_X = 427;
+const CENTER_BAR_WIDTH = 80;
+const BEARING_OFF_X = 895;
+const BEARING_OFF_WIDTH = 68;
+const BEARING_OFF_HEIGHT = 347;
+const BEARING_OFF_DIVIDER_HEIGHT = 21; // Gap between top and bottom bearing-off areas
+const CHECKER_RADIUS = 29.5; // Exact 59px diameter
+const CHECKER_INNER_RADIUS = 21.1; // Exact inner circle radius
+const TRIANGLE_HEIGHT = 297; // Height of triangular points
+
+// Colors from SVG specifications
+const BOARD_OUTER = '#552200';
+const BOARD_INNER = '#CC8F54';
+const LIGHT_POINT = '#F5F0E1';
+const DARK_POINT = '#964917';
+const CENTER_BAR_COLOR = '#552200';
+const WHITE_CHECKER_OUTER = '#DEDEDE';
+const BLACK_CHECKER_OUTER = '#2E2E2E';
+const BEAR_OFF_HIGHLIGHT = 'rgba(144, 238, 144, 0.5)'; // Light green with transparency
+
+// Gradient stops for bearing off areas
+const BEAR_OFF_GRADIENT = [
+    { stop: 0.165, color: '#CC8F54' },
+    { stop: 0.735, color: '#A87645' },
+    { stop: 1, color: '#66482A' }
+];
+
+// White checker gradient
+const WHITE_CHECKER_GRADIENT = [
+    { stop: 0, color: '#FFFFFF' },
+    { stop: 0.48, color: '#F1ECEC' },
+    { stop: 1, color: '#999999' }
+];
+
+// Black checker gradient
+const BLACK_CHECKER_GRADIENT = [
+    { stop: 0, color: '#565656' },
+    { stop: 0.305, color: '#444343' },
+    { stop: 0.545, color: '#000000' }
+];
+
+// Inner highlight gradients
+const WHITE_INNER_GRADIENT = [
+    { stop: 0, color: '#FFFFFF' },
+    { stop: 0.425, color: '#FFFFFF' },
+    { stop: 0.835, color: '#999999' }
+];
+
+const BLACK_INNER_GRADIENT = [
+    { stop: 0, color: '#8C8C8C' },
+    { stop: 0.345, color: '#5A5A5A' },
+    { stop: 0.68, color: '#000000' }
+];
 
 // Game state variables 
 let board = [];
@@ -36,7 +88,7 @@ let gameOver = false;
 // Initialize the game
 function setup() {
     console.log("Setup function called");
-    canvas = createCanvas(BOARD_WIDTH + 2 * BEAR_OFF_WIDTH, BOARD_HEIGHT);
+    canvas = createCanvas(BOARD_WIDTH + 2 * BEARING_OFF_WIDTH, BOARD_HEIGHT);
     canvas.parent('canvas-container');
     
     initializeBoard();
@@ -68,9 +120,11 @@ function draw() {
     background(240);
     
     drawBoard();
-    drawCheckers();
+    drawTriangularPoints();
     drawBar();
     drawBearOffAreas();
+    drawCheckers();
+    drawDice();
     
     if (selectedChecker) {
         drawValidMoves();
@@ -89,6 +143,7 @@ function draw() {
     }
     
     updateUI();
+    displayVersionBanner();
 }
 
 // Initialize the game board with correct checker placement according to standard backgammon rules
@@ -167,7 +222,7 @@ function mousePressed() {
                           (playerColor === 'black' && blackBar.length > 0);
     
     if (hasBarCheckers) {
-        const barX = BOARD_WIDTH/2 + BEAR_OFF_WIDTH;
+        const barX = CENTER_BAR_X + BEARING_OFF_WIDTH;
         const barY = playerColor === 'white' ? BOARD_HEIGHT/4 : BOARD_HEIGHT * 3/4;
         
         // Expand the click area for bar checkers to make them easier to select
@@ -659,10 +714,10 @@ function switchPlayer() {
 function isMouseOverPoint(x, y, pointIndex) {
     // Handle bear-off areas - CORRECTED to match proper sides
     if (pointIndex === 24) { // Black bear-off - RIGHT side
-        return x > BOARD_WIDTH + BEAR_OFF_WIDTH && 
+        return x > CENTER_BAR_X + BEARING_OFF_WIDTH && 
                y >= 0 && y <= BOARD_HEIGHT;
     } else if (pointIndex === -1) { // White bear-off - LEFT side
-        return x < BEAR_OFF_WIDTH && 
+        return x < BEARING_OFF_X && 
                y >= 0 && y <= BOARD_HEIGHT;
     }
     
@@ -673,8 +728,8 @@ function isMouseOverPoint(x, y, pointIndex) {
     // Create a more generous hit area, especially for triangular points
     if (pointIndex < 12) {
         // Bottom row - triangles point up
-        const triangleHeight = POINT_HEIGHT;
-        const triangleBase = POINT_WIDTH;
+        const triangleHeight = TRIANGLE_HEIGHT;
+        const triangleBase = INNER_BOARD_WIDTH;
         
         // Check if point is inside triangle
         const dx = Math.abs(x - pointX);
@@ -688,8 +743,8 @@ function isMouseOverPoint(x, y, pointIndex) {
         }
     } else {
         // Top row - triangles point down
-        const triangleHeight = POINT_HEIGHT;
-        const triangleBase = POINT_WIDTH;
+        const triangleHeight = TRIANGLE_HEIGHT;
+        const triangleBase = INNER_BOARD_WIDTH;
         
         // Check if point is inside triangle
         const dx = Math.abs(x - pointX);
@@ -716,223 +771,166 @@ function isMouseOverPoint(x, y, pointIndex) {
 
 // Drawing functions
 function drawBoard() {
-    // Draw bear-off areas
-    fill(101, 67, 33);
-    rect(0, 0, BEAR_OFF_WIDTH, BOARD_HEIGHT); // Left bear-off
-    rect(BOARD_WIDTH + BEAR_OFF_WIDTH, 0, BEAR_OFF_WIDTH, BOARD_HEIGHT); // Right bear-off
+    // Draw outer board (dark brown)
+    fill(BOARD_OUTER);
+    noStroke();
+    rect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
     
-    // Draw main board
-    fill(101, 67, 33);
-    rect(BEAR_OFF_WIDTH, 0, BOARD_WIDTH, BOARD_HEIGHT);
-    
-    let darkPointColor = color(165, 42, 42);
-    let lightPointColor = color(245, 245, 220);
-    
-    for (let i = 0; i < 24; i++) {
-        let pointX = getPointX(i);
-        let pointY = getPointY(i);
-        
-        fill(i % 2 === 0 ? darkPointColor : lightPointColor);
-        noStroke();
-        
-        if (i < 12) {
-            triangle(
-                pointX - POINT_WIDTH/2, pointY, 
-                pointX + POINT_WIDTH/2, pointY, 
-                pointX, pointY - POINT_HEIGHT
-            );
-        } else {
-            triangle(
-                pointX - POINT_WIDTH/2, pointY, 
-                pointX + POINT_WIDTH/2, pointY, 
-                pointX, pointY + POINT_HEIGHT
-            );
-        }
-    }
-    
-    // Draw center bar
-    fill(120, 80, 40); // Slightly different color for bar
-    const barX = BOARD_WIDTH/2 - BAR_WIDTH/2 + BEAR_OFF_WIDTH;
-    rect(barX, 0, BAR_WIDTH, BOARD_HEIGHT);
-    
-    // Draw board border
-    noFill();
-    strokeWeight(10);
-    stroke(101, 67, 33);
-    rect(BEAR_OFF_WIDTH, 0, BOARD_WIDTH, BOARD_HEIGHT);
-    
-    // Draw middle line
-    stroke(101, 67, 33);
-    line(BEAR_OFF_WIDTH, BOARD_HEIGHT/2, BEAR_OFF_WIDTH + BOARD_WIDTH, BOARD_HEIGHT/2);
+    // Draw inner board (lighter brown)
+    fill(BOARD_INNER);
+    rect(INNER_BOARD_X, INNER_BOARD_Y, INNER_BOARD_WIDTH, INNER_BOARD_HEIGHT);
 }
 
 function drawCheckers() {
-    for (let i = 0; i < board.length; i++) {
-        let point = board[i];
-        if (point.length === 0) continue;
+    // Draw checkers for each point
+    for (let i = 0; i < 24; i++) {
+        const pointX = getPointX(i);
+        const pointY = i < 12 ? INNER_BOARD_Y + INNER_BOARD_HEIGHT : INNER_BOARD_Y;
+        const direction = i < 12 ? 1 : -1; // Down for bottom row, up for top row
         
-        let pointX = getPointX(i);
-        
-        for (let j = 0; j < point.length; j++) {
-            // Skip the selected checker if it's being dragged
-            if (selectedChecker && 
-                selectedChecker.pointIndex === i && 
-                selectedChecker.checkerIndex === j) {
-                continue;
-            }
-            
-            let checker = point[j];
-            let checkerY = getCheckerY(i, j);
+        for (let j = 0; j < board[i].length; j++) {
+            const checker = board[i][j];
+            const offset = j * (CHECKER_RADIUS * 1.5) * direction;
+            const checkerY = pointY + offset + (CHECKER_RADIUS * direction);
             
             drawChecker(pointX, checkerY, checker.color);
+            
+            // Add visual indicator for draggable checkers
+            if (diceRolled && 
+                !gameOver && 
+                ((currentPlayer === 'player1' && checker.color === 'white') || 
+                 (currentPlayer === 'player2' && checker.color === 'black')) && 
+                j === board[i].length - 1 && 
+                isLegalMoveStart(i)) {
+                
+                // Only highlight if this is a legal move start
+                noFill();
+                stroke(0, 255, 0, 150); // Semi-transparent green
+                strokeWeight(2);
+                ellipse(pointX, checkerY, CHECKER_RADIUS * 2.2);
+                
+                // Add pulsing effect to highlight draggable checker
+                const pulse = (Math.sin(millis() * 0.005) + 1) * 5;
+                stroke(255, 255, 0, 150); // Semi-transparent yellow
+                ellipse(pointX, checkerY, CHECKER_RADIUS * 2.2 + pulse);
+            }
         }
     }
 }
 
 function drawChecker(x, y, color) {
     if (color === 'white') {
-        fill(255);
-        stroke(200);
+        fill(WHITE_CHECKER_OUTER);
+        stroke(BLACK_CHECKER_OUTER);
         strokeWeight(2);
         ellipse(x, y, CHECKER_RADIUS * 2);
         
         // Add a highlight to the checker
         noStroke();
-        fill(255, 255, 255, 150);
-        ellipse(x - CHECKER_RADIUS * 0.3, y - CHECKER_RADIUS * 0.3, CHECKER_RADIUS);
+        fill(WHITE_INNER_GRADIENT);
+        ellipse(x - CHECKER_INNER_RADIUS * 0.3, y - CHECKER_INNER_RADIUS * 0.3, CHECKER_INNER_RADIUS);
     } else {
-        fill(50);
-        stroke(20);
+        fill(BLACK_CHECKER_OUTER);
+        stroke(WHITE_CHECKER_OUTER);
         strokeWeight(2);
         ellipse(x, y, CHECKER_RADIUS * 2);
         
         // Add a highlight to the checker
         noStroke();
-        fill(100, 100, 100, 150);
-        ellipse(x - CHECKER_RADIUS * 0.3, y - CHECKER_RADIUS * 0.3, CHECKER_RADIUS);
+        fill(BLACK_INNER_GRADIENT);
+        ellipse(x - CHECKER_INNER_RADIUS * 0.3, y - CHECKER_INNER_RADIUS * 0.3, CHECKER_INNER_RADIUS);
     }
 }
 
 function drawBar() {
-    let barX = BOARD_WIDTH/2 + BEAR_OFF_WIDTH;
-    
-    // Draw bar background
-    fill(120, 80, 40);
-    rect(barX - BAR_WIDTH/2, 0, BAR_WIDTH, BOARD_HEIGHT);
+    // Draw center bar
+    fill(CENTER_BAR_COLOR);
+    rect(CENTER_BAR_X, INNER_BOARD_Y, CENTER_BAR_WIDTH, INNER_BOARD_HEIGHT);
     
     // Draw checkers on the bar
+    const barCenterX = CENTER_BAR_X + CENTER_BAR_WIDTH / 2;
+    
+    // Draw white checkers on the bar
     for (let i = 0; i < whiteBar.length; i++) {
-        let barY = BOARD_HEIGHT / 4 - (i * CHECKER_RADIUS * 1.2);
-        drawChecker(barX, barY, 'white');
-        
-        // Add a visual indicator for draggable bar checkers
-        if (currentPlayer === 'player1' && i === whiteBar.length - 1) {
-            noFill();
-            stroke(0, 255, 0, 200);
-            strokeWeight(3);
-            circle(barX, barY, CHECKER_RADIUS * 2.5);
-            
-            // Add pulsing effect to highlight draggable checker
-            const pulse = (Math.sin(millis() * 0.005) + 1) * 5;
-            stroke(255, 255, 0);
-            circle(barX, barY, CHECKER_RADIUS * 2.5 + pulse);
-        }
+        const y = INNER_BOARD_Y + INNER_BOARD_HEIGHT / 4 + i * (CHECKER_RADIUS * 2 + 5);
+        drawChecker(barCenterX, y, 'white');
     }
     
+    // Draw black checkers on the bar
     for (let i = 0; i < blackBar.length; i++) {
-        let barY = BOARD_HEIGHT * 3/4 + (i * CHECKER_RADIUS * 1.2);
-        drawChecker(barX, barY, 'black');
-        
-        // Add a visual indicator for draggable bar checkers
-        if (currentPlayer === 'player2' && i === blackBar.length - 1) {
-            noFill();
-            stroke(0, 255, 0, 200);
-            strokeWeight(3);
-            circle(barX, barY, CHECKER_RADIUS * 2.5);
-            
-            // Add pulsing effect to highlight draggable checker
-            const pulse = (Math.sin(millis() * 0.005) + 1) * 5;
-            stroke(255, 255, 0);
-            circle(barX, barY, CHECKER_RADIUS * 2.5 + pulse);
-        }
+        const y = INNER_BOARD_Y + INNER_BOARD_HEIGHT * 3/4 - i * (CHECKER_RADIUS * 2 + 5);
+        drawChecker(barCenterX, y, 'black');
     }
     
-    // Highlight bar if player must use it
-    const playerColor = currentPlayer === 'player1' ? 'white' : 'black';
-    if ((playerColor === 'white' && whiteBar.length > 0) || 
-        (playerColor === 'black' && blackBar.length > 0)) {
+    // Highlight the bar if the current player has checkers on it
+    if ((currentPlayer === 'player1' && whiteBar.length > 0) || 
+        (currentPlayer === 'player2' && blackBar.length > 0)) {
         
-        // More visible highlight when a player must use the bar
+        // Highlight the bar
         noFill();
         stroke(255, 50, 50); // Red outline
         strokeWeight(4);
-        rect(barX - BAR_WIDTH/2, 0, BAR_WIDTH, BOARD_HEIGHT);
+        rect(CENTER_BAR_X, INNER_BOARD_Y, CENTER_BAR_WIDTH, INNER_BOARD_HEIGHT);
         
         // Add message
-        fill(255, 50, 50);
-        noStroke();
-        textSize(16);
+        fill(255);
+        textSize(14);
         textAlign(CENTER);
-        
-        if (playerColor === 'white') {
-            text("MUST MOVE FROM BAR", barX, BOARD_HEIGHT/4 + CHECKER_RADIUS * 3);
-        } else {
-            text("MUST MOVE FROM BAR", barX, BOARD_HEIGHT * 3/4 - CHECKER_RADIUS * 3);
-        }
+        text("Must use bar first!", barCenterX, INNER_BOARD_HEIGHT / 2);
     }
 }
 
 function drawBearOffAreas() {
+    // Draw bearing-off areas with gradient
+    drawingContext.fillStyle = createGradient(
+        BEARING_OFF_X, INNER_BOARD_Y, 
+        BEARING_OFF_WIDTH, 0, 
+        BEAR_OFF_GRADIENT
+    );
+    rect(BEARING_OFF_X, INNER_BOARD_Y, BEARING_OFF_WIDTH, BEARING_OFF_HEIGHT);
+    
+    drawingContext.fillStyle = createGradient(
+        BEARING_OFF_X, INNER_BOARD_Y + BEARING_OFF_HEIGHT + BEARING_OFF_DIVIDER_HEIGHT, 
+        BEARING_OFF_WIDTH, 0, 
+        BEAR_OFF_GRADIENT
+    );
+    rect(BEARING_OFF_X, INNER_BOARD_Y + BEARING_OFF_HEIGHT + BEARING_OFF_DIVIDER_HEIGHT, 
+         BEARING_OFF_WIDTH, BEARING_OFF_HEIGHT);
+    
     // Draw bear-off area labels
-    fill(245, 245, 220);
-    textSize(14);
+    fill(255);
+    textSize(16);
     textAlign(CENTER);
     
-    // CORRECTED labels for bear-off areas
-    text("White Bear Off", BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4);
-    text("Black Bear Off", BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4);
+    // Black bear-off (top)
+    text("BLACK", BEARING_OFF_X + BEARING_OFF_WIDTH/2, INNER_BOARD_Y + 30);
+    text("BEAR OFF", BEARING_OFF_X + BEARING_OFF_WIDTH/2, INNER_BOARD_Y + 50);
+    text(`${blackBearOff.length}/15`, BEARING_OFF_X + BEARING_OFF_WIDTH/2, INNER_BOARD_Y + 80);
     
-    if (currentPlayer === 'player2' && !gameOver) {
-        // Highlight black bear-off when it's black's turn - RIGHT SIDE
+    // White bear-off (bottom)
+    text("WHITE", BEARING_OFF_X + BEARING_OFF_WIDTH/2, 
+         INNER_BOARD_Y + BEARING_OFF_HEIGHT + BEARING_OFF_DIVIDER_HEIGHT + 30);
+    text("BEAR OFF", BEARING_OFF_X + BEARING_OFF_WIDTH/2, 
+         INNER_BOARD_Y + BEARING_OFF_HEIGHT + BEARING_OFF_DIVIDER_HEIGHT + 50);
+    text(`${whiteBearOff.length}/15`, BEARING_OFF_X + BEARING_OFF_WIDTH/2, 
+         INNER_BOARD_Y + BEARING_OFF_HEIGHT + BEARING_OFF_DIVIDER_HEIGHT + 80);
+    
+    // Highlight the appropriate bear-off area if it's the current player's turn
+    if (canBearOff(currentPlayer === 'player1' ? 'white' : 'black')) {
         noFill();
-        stroke(255, 150, 0);
+        stroke(BEAR_OFF_HIGHLIGHT);
         strokeWeight(2);
-        rect(BOARD_WIDTH + BEAR_OFF_WIDTH, 0, BEAR_OFF_WIDTH, BOARD_HEIGHT);
+        
+        if (currentPlayer === 'player2') {
+            // Highlight black bear-off (top)
+            rect(BEARING_OFF_X, INNER_BOARD_Y, BEARING_OFF_WIDTH, BEARING_OFF_HEIGHT);
+        } else {
+            // Highlight white bear-off (bottom)
+            rect(BEARING_OFF_X, INNER_BOARD_Y + BEARING_OFF_HEIGHT + BEARING_OFF_DIVIDER_HEIGHT, 
+                 BEARING_OFF_WIDTH, BEARING_OFF_HEIGHT);
+        }
+        
         noStroke();
-    }
-    
-    if (currentPlayer === 'player1' && !gameOver) {
-        // Highlight white bear-off when it's white's turn - LEFT SIDE
-        noFill();
-        stroke(255, 150, 0);
-        strokeWeight(2);
-        rect(0, 0, BEAR_OFF_WIDTH, BOARD_HEIGHT);
-        noStroke();
-    }
-    
-    // Draw borne-off checkers count
-    fill(245, 245, 220);
-    textSize(18);
-    
-    // Corrected count placement
-    text(`${whiteBearOff.length}/15`, BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4 + 30);
-    text(`${blackBearOff.length}/15`, BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2, BOARD_HEIGHT/4 + 30);
-    
-    // Draw some visual representation of borne-off checkers - CORRECTED sides
-    for (let i = 0; i < Math.min(whiteBearOff.length, 5); i++) {
-        drawChecker(
-            BEAR_OFF_WIDTH/2,
-            BOARD_HEIGHT/2 - CHECKER_RADIUS * 2 - (i * CHECKER_RADIUS * 0.8),
-            'white'
-        );
-    }
-    
-    for (let i = 0; i < Math.min(blackBearOff.length, 5); i++) {
-        drawChecker(
-            BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2,
-            BOARD_HEIGHT/2 + CHECKER_RADIUS * 2 + (i * CHECKER_RADIUS * 0.8),
-            'black'
-        );
     }
 }
 
@@ -947,8 +945,8 @@ function drawValidMoves() {
         // Bearing off indicators
         if (pointIndex === 24 || pointIndex === -1) {
             const x = pointIndex === 24 ? 
-                BOARD_WIDTH + BEAR_OFF_WIDTH + BEAR_OFF_WIDTH/2 : 
-                BEAR_OFF_WIDTH/2;
+                CENTER_BAR_X + BEARING_OFF_WIDTH + BEARING_OFF_WIDTH/2 : 
+                BEARING_OFF_X/2;
             const y = BOARD_HEIGHT/2;
             
             // Draw a highlight for bear-off
@@ -976,16 +974,16 @@ function drawValidMoves() {
         if (pointIndex < 12) {
             // Bottom row
             triangle(
-                pointX - POINT_WIDTH/2, pointY,
-                pointX + POINT_WIDTH/2, pointY,
-                pointX, pointY - POINT_HEIGHT
+                pointX - INNER_BOARD_WIDTH/2, pointY,
+                pointX + INNER_BOARD_WIDTH/2, pointY,
+                pointX, pointY - TRIANGLE_HEIGHT
             );
         } else {
             // Top row
             triangle(
-                pointX - POINT_WIDTH/2, pointY,
-                pointX + POINT_WIDTH/2, pointY,
-                pointX, pointY + POINT_HEIGHT
+                pointX - INNER_BOARD_WIDTH/2, pointY,
+                pointX + INNER_BOARD_WIDTH/2, pointY,
+                pointX, pointY + TRIANGLE_HEIGHT
             );
         }
         
@@ -1007,8 +1005,8 @@ function drawValidMoves() {
 
 // Helper functions for positioning - improved to match reference image
 function getPointX(pointIndex) {
-    const boardOffset = BEAR_OFF_WIDTH;
-    const pointSpacing = BOARD_WIDTH / 12;
+    const boardOffset = BEARING_OFF_X;
+    const pointSpacing = INNER_BOARD_WIDTH / 12;
     const halfPointSpacing = pointSpacing / 2;
     
     // Follow standard backgammon board layout (points 1-24)
@@ -1017,7 +1015,7 @@ function getPointX(pointIndex) {
     
     if (pointIndex < 6) {
         // Bottom right (points 1-6)
-        return boardOffset + BOARD_WIDTH - ((pointIndex + 1) * pointSpacing) + halfPointSpacing;
+        return boardOffset + INNER_BOARD_WIDTH - ((pointIndex + 1) * pointSpacing) + halfPointSpacing;
     } else if (pointIndex < 12) {
         // Bottom left (points 7-12)
         return boardOffset + ((11 - pointIndex) * pointSpacing) + halfPointSpacing;
@@ -1026,12 +1024,12 @@ function getPointX(pointIndex) {
         return boardOffset + ((pointIndex - 12) * pointSpacing) + halfPointSpacing;
     } else {
         // Top right (points 19-24)
-        return boardOffset + BOARD_WIDTH - ((23 - pointIndex) * pointSpacing) + halfPointSpacing;
+        return boardOffset + INNER_BOARD_WIDTH - ((23 - pointIndex) * pointSpacing) + halfPointSpacing;
     }
 }
 
 function getPointY(pointIndex) {
-    return pointIndex < 12 ? BOARD_HEIGHT : 0;
+    return pointIndex < 12 ? INNER_BOARD_HEIGHT : 0;
 }
 
 function getCheckerY(pointIndex, checkerIndex) {
@@ -1061,7 +1059,7 @@ function saveGameState() {
         blackBar,
         whiteBearOff,
         blackBearOff,
-        version: '10.13.0',
+        version: '10.13.1',
         lastUpdateTime,
         forcedMove,
         gameOver
@@ -1097,7 +1095,7 @@ function loadGameState() {
             
             // If we're loading an older version without gameOver flag,
             // check if game should be over
-            if (gameState.version !== '10.13.0') {
+            if (gameState.version !== '10.13.1') {
                 checkGameEnd();
             }
             
@@ -1193,25 +1191,24 @@ function updateUI() {
 
 // Update the displayVersionBanner function to show when the code was last updated
 function displayVersionBanner() {
+    // Create or get the version banner element
     let versionBanner = document.getElementById('version-banner');
-    
     if (!versionBanner) {
         versionBanner = document.createElement('div');
         versionBanner.id = 'version-banner';
-        versionBanner.style.position = 'absolute';
-        versionBanner.style.top = '10px';
-        versionBanner.style.right = '10px';
+        versionBanner.style.position = 'fixed';
+        versionBanner.style.top = '0';
+        versionBanner.style.left = '0';
         versionBanner.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-        versionBanner.style.color = 'white';
+        versionBanner.style.color = '#fff';
         versionBanner.style.padding = '5px 10px';
-        versionBanner.style.borderRadius = '5px';
-        versionBanner.style.fontFamily = 'Arial, sans-serif';
         versionBanner.style.fontSize = '12px';
+        versionBanner.style.fontFamily = 'monospace';
         versionBanner.style.zIndex = '1000';
         document.body.appendChild(versionBanner);
     }
     
-    versionBanner.innerHTML = `Version 10.13.0<br>Code Updated: June 19, 2024 @ 22:00<br>STRICT BEARING OFF RULES`;
+    versionBanner.innerHTML = `Version 10.13.1<br>Code Updated: June 20, 2024 @ 22:00<br>SVG SPECIFICATIONS IMPLEMENTATION`;
 }
 
 // New function to check if the game is over
@@ -1289,4 +1286,268 @@ window.draw = draw;
 window.mousePressed = mousePressed;
 window.mouseReleased = mouseReleased;
 window.rollDice = rollDice;
-window.resetGame = resetGame; 
+window.resetGame = resetGame;
+
+// Create a linear gradient
+function createGradient(x, y, w, h, stops) {
+    const ctx = drawingContext;
+    const gradient = ctx.createLinearGradient(x, y, x + w, y + h);
+    
+    for (const stop of stops) {
+        gradient.addColorStop(stop.stop, stop.color);
+    }
+    
+    return gradient;
+}
+
+// Get color from gradient at specific position
+function getColorFromGradient(t, stops) {
+    // Find the stops that t is between
+    let startStop = stops[0];
+    let endStop = stops[stops.length - 1];
+    
+    for (let i = 0; i < stops.length - 1; i++) {
+        if (t >= stops[i].stop && t <= stops[i+1].stop) {
+            startStop = stops[i];
+            endStop = stops[i+1];
+            break;
+        }
+    }
+    
+    // Normalize t between the two stops
+    const normalizedT = (t - startStop.stop) / (endStop.stop - startStop.stop);
+    
+    // Interpolate colors
+    const startColor = color(startStop.color);
+    const endColor = color(endStop.color);
+    
+    return lerpColor(startColor, endColor, normalizedT);
+}
+
+// Create a radial gradient
+function createRadialGradient(x, y, radius, stops) {
+    const ctx = drawingContext;
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    
+    for (const stop of stops) {
+        gradient.addColorStop(stop.stop, stop.color);
+    }
+    
+    return gradient;
+}
+
+// Draw the triangular points
+function drawTriangularPoints() {
+    // Top Left Points (13-18) - Dark/Light alternating
+    fill(DARK_POINT);
+    triangle(38, 38, 98, 38, 68, 335); // Point 13
+    
+    fill(LIGHT_POINT);
+    triangle(98, 38, 158, 38, 128, 335); // Point 14
+    
+    fill(DARK_POINT);
+    triangle(158, 38, 218, 38, 188, 335); // Point 15
+    
+    fill(LIGHT_POINT);
+    triangle(218, 38, 278, 38, 248, 335); // Point 16
+    
+    fill(DARK_POINT);
+    triangle(278, 38, 338, 38, 308, 335); // Point 17
+    
+    fill(LIGHT_POINT);
+    triangle(338, 38, 398, 38, 368, 335); // Point 18
+    
+    // Top Right Points (19-24) - Dark/Light alternating
+    fill(DARK_POINT);
+    triangle(507, 38, 567, 38, 537, 335); // Point 19
+    
+    fill(LIGHT_POINT);
+    triangle(567, 38, 627, 38, 597, 335); // Point 20
+    
+    fill(DARK_POINT);
+    triangle(627, 38, 687, 38, 657, 335); // Point 21
+    
+    fill(LIGHT_POINT);
+    triangle(687, 38, 747, 38, 717, 335); // Point 22
+    
+    fill(DARK_POINT);
+    triangle(747, 38, 807, 38, 777, 335); // Point 23
+    
+    fill(LIGHT_POINT);
+    triangle(807, 38, 867, 38, 837, 335); // Point 24
+    
+    // Bottom Left Points (7-12) - Light/Dark alternating
+    fill(LIGHT_POINT);
+    triangle(38, 754, 98, 754, 68, 457); // Point 12
+    
+    fill(DARK_POINT);
+    triangle(98, 754, 158, 754, 128, 457); // Point 11
+    
+    fill(LIGHT_POINT);
+    triangle(158, 754, 218, 754, 188, 457); // Point 10
+    
+    fill(DARK_POINT);
+    triangle(218, 754, 278, 754, 248, 457); // Point 9
+    
+    fill(LIGHT_POINT);
+    triangle(278, 754, 338, 754, 308, 457); // Point 8
+    
+    fill(DARK_POINT);
+    triangle(338, 754, 398, 754, 368, 457); // Point 7
+    
+    // Bottom Right Points (1-6) - Light/Dark alternating
+    fill(LIGHT_POINT);
+    triangle(507, 754, 567, 754, 537, 457); // Point 6
+    
+    fill(DARK_POINT);
+    triangle(567, 754, 627, 754, 597, 457); // Point 5
+    
+    fill(LIGHT_POINT);
+    triangle(627, 754, 687, 754, 657, 457); // Point 4
+    
+    fill(DARK_POINT);
+    triangle(687, 754, 747, 754, 717, 457); // Point 3
+    
+    fill(LIGHT_POINT);
+    triangle(747, 754, 807, 754, 777, 457); // Point 2
+    
+    fill(DARK_POINT);
+    triangle(807, 754, 867, 754, 837, 457); // Point 1
+}
+
+// Draw the center bar
+function drawBar() {
+    // Draw center bar
+    fill(CENTER_BAR_COLOR);
+    rect(CENTER_BAR_X, INNER_BOARD_Y, CENTER_BAR_WIDTH, INNER_BOARD_HEIGHT);
+    
+    // Draw checkers on the bar
+    const barCenterX = CENTER_BAR_X + CENTER_BAR_WIDTH / 2;
+    
+    // Draw white checkers on the bar
+    for (let i = 0; i < whiteBar.length; i++) {
+        const y = INNER_BOARD_Y + INNER_BOARD_HEIGHT / 4 + i * (CHECKER_RADIUS * 2 + 5);
+        drawChecker(barCenterX, y, 'white');
+    }
+    
+    // Draw black checkers on the bar
+    for (let i = 0; i < blackBar.length; i++) {
+        const y = INNER_BOARD_Y + INNER_BOARD_HEIGHT * 3/4 - i * (CHECKER_RADIUS * 2 + 5);
+        drawChecker(barCenterX, y, 'black');
+    }
+    
+    // Highlight the bar if the current player has checkers on it
+    if ((currentPlayer === 'player1' && whiteBar.length > 0) || 
+        (currentPlayer === 'player2' && blackBar.length > 0)) {
+        
+        // Highlight the bar
+        noFill();
+        stroke(255, 50, 50); // Red outline
+        strokeWeight(4);
+        rect(CENTER_BAR_X, INNER_BOARD_Y, CENTER_BAR_WIDTH, INNER_BOARD_HEIGHT);
+        
+        // Add message
+        fill(255);
+        textSize(14);
+        textAlign(CENTER);
+        text("Must use bar first!", barCenterX, INNER_BOARD_HEIGHT / 2);
+    }
+}
+
+// Draw the bear-off areas
+function drawBearOffAreas() {
+    // Draw bearing-off areas with gradient
+    drawingContext.fillStyle = createGradient(
+        BEARING_OFF_X, INNER_BOARD_Y, 
+        BEARING_OFF_WIDTH, 0, 
+        BEAR_OFF_GRADIENT
+    );
+    rect(BEARING_OFF_X, INNER_BOARD_Y, BEARING_OFF_WIDTH, BEARING_OFF_HEIGHT);
+    
+    drawingContext.fillStyle = createGradient(
+        BEARING_OFF_X, INNER_BOARD_Y + BEARING_OFF_HEIGHT + BEARING_OFF_DIVIDER_HEIGHT, 
+        BEARING_OFF_WIDTH, 0, 
+        BEAR_OFF_GRADIENT
+    );
+    rect(BEARING_OFF_X, INNER_BOARD_Y + BEARING_OFF_HEIGHT + BEARING_OFF_DIVIDER_HEIGHT, 
+         BEARING_OFF_WIDTH, BEARING_OFF_HEIGHT);
+    
+    // Draw bear-off area labels
+    fill(255);
+    textSize(16);
+    textAlign(CENTER);
+    
+    // Black bear-off (top)
+    text("BLACK", BEARING_OFF_X + BEARING_OFF_WIDTH/2, INNER_BOARD_Y + 30);
+    text("BEAR OFF", BEARING_OFF_X + BEARING_OFF_WIDTH/2, INNER_BOARD_Y + 50);
+    text(`${blackBearOff.length}/15`, BEARING_OFF_X + BEARING_OFF_WIDTH/2, INNER_BOARD_Y + 80);
+    
+    // White bear-off (bottom)
+    text("WHITE", BEARING_OFF_X + BEARING_OFF_WIDTH/2, 
+         INNER_BOARD_Y + BEARING_OFF_HEIGHT + BEARING_OFF_DIVIDER_HEIGHT + 30);
+    text("BEAR OFF", BEARING_OFF_X + BEARING_OFF_WIDTH/2, 
+         INNER_BOARD_Y + BEARING_OFF_HEIGHT + BEARING_OFF_DIVIDER_HEIGHT + 50);
+    text(`${whiteBearOff.length}/15`, BEARING_OFF_X + BEARING_OFF_WIDTH/2, 
+         INNER_BOARD_Y + BEARING_OFF_HEIGHT + BEARING_OFF_DIVIDER_HEIGHT + 80);
+    
+    // Highlight the appropriate bear-off area if it's the current player's turn
+    if (canBearOff(currentPlayer === 'player1' ? 'white' : 'black')) {
+        noFill();
+        stroke(BEAR_OFF_HIGHLIGHT);
+        strokeWeight(2);
+        
+        if (currentPlayer === 'player2') {
+            // Highlight black bear-off (top)
+            rect(BEARING_OFF_X, INNER_BOARD_Y, BEARING_OFF_WIDTH, BEARING_OFF_HEIGHT);
+        } else {
+            // Highlight white bear-off (bottom)
+            rect(BEARING_OFF_X, INNER_BOARD_Y + BEARING_OFF_HEIGHT + BEARING_OFF_DIVIDER_HEIGHT, 
+                 BEARING_OFF_WIDTH, BEARING_OFF_HEIGHT);
+        }
+        
+        noStroke();
+    }
+}
+
+// Draw a checker with gradient
+function drawChecker(x, y, checkerColor) {
+    if (checkerColor === 'white') {
+        // Draw outer circle with gradient
+        drawingContext.fillStyle = createRadialGradient(
+            x, y, CHECKER_RADIUS, WHITE_CHECKER_GRADIENT
+        );
+        noStroke();
+        ellipse(x, y, CHECKER_RADIUS * 2);
+        
+        // Draw inner circle with gradient
+        drawingContext.fillStyle = createRadialGradient(
+            x, y, CHECKER_INNER_RADIUS, WHITE_INNER_GRADIENT
+        );
+        ellipse(x, y, CHECKER_INNER_RADIUS * 2);
+        
+        // Add subtle border
+        noFill();
+        stroke(WHITE_CHECKER_OUTER);
+        strokeWeight(1);
+        ellipse(x, y, CHECKER_RADIUS * 2);
+    } else {
+        // Draw outer circle with gradient
+        drawingContext.fillStyle = createRadialGradient(
+            x, y, CHECKER_RADIUS, BLACK_CHECKER_GRADIENT
+        );
+        noStroke();
+        ellipse(x, y, CHECKER_RADIUS * 2);
+        
+        // Draw inner circle with gradient
+        drawingContext.fillStyle = createRadialGradient(
+            x, y, CHECKER_INNER_RADIUS, BLACK_INNER_GRADIENT
+        );
+        ellipse(x, y, CHECKER_INNER_RADIUS * 2);
+        
+        // Add subtle border
+        noFill();
+        stroke(BLACK_CHECKER_OUTER);
+        strokeWeight(1);
+        ellipse(x, y, CHECKER_RADIUS * 2);
+    }
+} 
